@@ -66,13 +66,27 @@ def test_mixed_orientation_falls_back() -> None:
 
 
 def test_regular_series_is_volume() -> None:
-    out, m = sort_instances(axial(20, dz=2.5))
+    rows = [row(i, ipp=(0, 0, i * 2.5), rows=16, cols=32, ps=(0.5, 0.7)) for i in range(20)]
+    out, m = sort_instances(rows)
     v = volume_info(out, m)
     assert v.is_volume and v.reason is None
-    assert v.dims == (16, 16, 20)
-    assert v.spacing == pytest.approx((0.5, 0.5, 2.5))
+    # dims/spacing are (x=cols, y=rows, z); PixelSpacing is [row spacing, col spacing],
+    # so a non-square rows/cols and a non-square pixel_spacing actually exercise the swap.
+    assert v.dims == (32, 16, 20)
+    assert v.spacing == pytest.approx((0.7, 0.5, 2.5))
     assert v.origin == (0.0, 0.0, 0.0)
     assert v.direction == pytest.approx((1, 0, 0, 0, 1, 0, 0, 0, 1))
+
+
+def test_degenerate_orientation_falls_back() -> None:
+    # Row and column cosines are identical/parallel -> cross product norm ~0 -> no
+    # well-defined slice normal. Must not be treated as a valid geometry orientation.
+    iop = (1, 0, 0, 1, 0, 0)
+    rows = [row(i, ipp=(0, 0, float(i)), iop=iop) for i in range(4)]
+    out, method = sort_instances(rows)
+    assert method == "instance-number"
+    v = volume_info(out, method)
+    assert v.reason == "missing or inconsistent orientation"
 
 
 def test_spacing_uses_median_gap_not_slice_thickness() -> None:

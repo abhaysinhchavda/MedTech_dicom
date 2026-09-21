@@ -8,11 +8,21 @@ from app.models import InstanceRow, SortMethod, VolumeInfo
 
 _ORIENT_TOL = 1e-4
 _GAP_TOL = 0.01  # 1 % of the median gap
+_DEGENERATE_NORM_TOL = 1e-6  # row/col cosines parallel or all-zero -> no well-defined normal
 
 
-def _normal(iop: tuple[float, ...]) -> np.ndarray:
+def _normal(iop: tuple[float, ...]) -> np.ndarray | None:
+    """Unit slice normal from IOP's row/column cosines, or None if degenerate.
+
+    Returns None when the row and column cosines are parallel (or either is all-zero),
+    since their cross product then has ~zero norm and no direction can be normalized
+    from it -- this is an invalid/unusable orientation, not a valid one.
+    """
     n = np.cross(np.array(iop[:3], dtype=float), np.array(iop[3:6], dtype=float))
-    result: np.ndarray = n / np.linalg.norm(n)
+    norm = np.linalg.norm(n)
+    if norm < _DEGENERATE_NORM_TOL:
+        return None
+    result: np.ndarray = n / norm
     return result
 
 
@@ -37,18 +47,23 @@ def sort_instances(rows: list[InstanceRow]) -> tuple[list[InstanceRow], SortMeth
     if rows and has_geometry and _same_orientation(rows):
         first_iop = rows[0].iop
         assert first_iop is not None
-        normal = _normal(first_iop)
-        keyed = sorted(rows, key=lambda r: _position(r, normal))
-        return keyed, "geometry"
+        maybe_normal = _normal(first_iop)
+        if maybe_normal is not None:
+            normal: np.ndarray = maybe_normal
+            keyed = sorted(rows, key=lambda r: _position(r, normal))
+            return keyed, "geometry"
     if rows and all(r.instance_number is not None for r in rows):
         return sorted(rows, key=lambda r: (r.instance_number, r.path)), "instance-number"
     return sorted(rows, key=lambda r: r.path), "filename"
 
 
-def _positions(rows: list[InstanceRow]) -> list[float]:
+def _positions(rows: list[InstanceRow]) -> list[float] | None:
     first_iop = rows[0].iop
     assert first_iop is not None
-    normal = _normal(first_iop)
+    maybe_normal = _normal(first_iop)
+    if maybe_normal is None:
+        return None
+    normal: np.ndarray = maybe_normal
     return [_position(r, normal) for r in rows]
 
 
@@ -74,6 +89,8 @@ def volume_info(rows: list[InstanceRow], method: SortMethod) -> VolumeInfo:
         # multi-frame spacing not derivable here
         return VolumeInfo(False, "irregular slice spacing")
     pos = _positions(rows)
+    if pos is None:
+        return VolumeInfo(False, "missing or inconsistent orientation")
     gaps = [b - a for a, b in zip(pos, pos[1:], strict=False)]
     median = statistics.median(gaps)
     if median <= 0 or any(abs(g - median) > _GAP_TOL * median for g in gaps):
@@ -84,7 +101,10 @@ def volume_info(rows: list[InstanceRow], method: SortMethod) -> VolumeInfo:
     assert first.iop is not None and first.ipp is not None
     iop = first.iop
     ipp = first.ipp
-    normal = _normal(iop)
+    maybe_normal = _normal(iop)
+    if maybe_normal is None:
+        return VolumeInfo(False, "missing or inconsistent orientation")
+    normal: np.ndarray = maybe_normal
     return VolumeInfo(
         True,
         None,
