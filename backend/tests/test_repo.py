@@ -67,6 +67,28 @@ def test_finalize_writes_volume_columns(tmp_path: Path) -> None:
     assert s.volume == v
 
 
+def test_upsert_series_does_not_clobber_finalized_columns(tmp_path: Path) -> None:
+    c = _conn(tmp_path)
+    repo.upsert_study(c, _study())
+    repo.upsert_series(c, _series())
+    repo.upsert_instance(c, _inst())
+    v = VolumeInfo(
+        True, None, (16, 16, 3), (0.5, 0.5, 1.0), (0.0, 0.0, 0.0), (1, 0, 0, 0, 1, 0, 0, 0, 1)
+    )
+    repo.update_series_finalized(
+        c, "SE1", instance_count=3, thumb_sop_uid="I1", sort_method="geometry", volume=v
+    )
+    repo.upsert_series(c, SeriesRow("SE1", "S1", "MR", "renamed", 9))
+    s = repo.get_series(c, "SE1")
+    assert s.modality == "MR"
+    assert s.series_desc == "renamed"
+    assert s.series_number == 9
+    assert s.instance_count == 3
+    assert s.thumb_sop_uid == "I1"
+    assert s.sort_method == "geometry"
+    assert s.volume == v
+
+
 def test_list_studies_filters(tmp_path: Path) -> None:
     c = _conn(tmp_path)
     repo.upsert_study(c, _study("A"))
