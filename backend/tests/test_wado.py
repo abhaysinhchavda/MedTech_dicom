@@ -77,3 +77,44 @@ def test_rendered_png_thumbnail(client, tmp_path: Path) -> None:
     assert r.status_code == 200 and r.headers["content-type"] == "image/png"
     img = Image.open(io.BytesIO(r.content))
     assert img.size == (8, 8) and img.mode == "L"
+
+
+def test_multiframe_frames_and_rendered(client, tmp_path: Path) -> None:
+    (ds,) = make_ct_series(1)
+    ds.NumberOfFrames = 3
+    ds.PixelData = np.stack(
+        [np.full((16, 16), k * 100, dtype=np.int16) for k in range(3)]
+    ).tobytes()
+    in_dir = tmp_path / "in"
+    in_dir.mkdir(parents=True, exist_ok=True)
+    pydicom.dcmwrite(in_dir / "img0000.dcm", ds, enforce_file_format=True)
+    ingest_directory(client.app.state.db, in_dir, client.app.state.settings.store_dir)
+    d = [ds]
+
+    r2 = client.get(_url(d, ds.SOPInstanceUID) + "/frames/2")
+    assert r2.status_code == 200
+    _, _, rest2 = r2.content.partition(b"\r\n\r\n")
+    arr2 = np.frombuffer(rest2[: 16 * 16 * 2], dtype="<i2").reshape(16, 16)
+    assert np.all(arr2 == 100)
+
+    r3 = client.get(_url(d, ds.SOPInstanceUID) + "/frames/3")
+    assert r3.status_code == 200
+    _, _, rest3 = r3.content.partition(b"\r\n\r\n")
+    arr3 = np.frombuffer(rest3[: 16 * 16 * 2], dtype="<i2").reshape(16, 16)
+    assert np.all(arr3 == 200)
+
+    assert client.get(_url(d, ds.SOPInstanceUID) + "/frames/4").status_code == 404
+
+    r = client.get(_url(d, ds.SOPInstanceUID) + "/rendered", params={"viewport": "8,8"})
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+    img = Image.open(io.BytesIO(r.content))
+    assert img.size == (8, 8) and img.mode == "L"
+    assert len(set(img.getdata())) == 1
+
+    instances_url = (
+        f"/dicomweb/studies/{ds.StudyInstanceUID}/series/{ds.SeriesInstanceUID}/instances"
+    )
+    ir = client.get(instances_url)
+    assert ir.status_code == 200
+    md = ir.json()
+    assert md[0]["00280008"]["Value"] == [3]
