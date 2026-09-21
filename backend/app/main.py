@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health, volume
+from app.api import health, upload, volume
 from app.config import Settings, get_settings
 from app.db import connect, init_schema
 from app.dicomweb import qido, wado
@@ -27,6 +27,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(qido.router)
     app.include_router(wado.router)
     app.include_router(volume.router)
+    app.include_router(upload.router)
     return app
 
 
