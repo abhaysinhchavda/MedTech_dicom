@@ -10,12 +10,16 @@ from tests.conftest import make_ct_series
 def test_compressed_roundtrips_to_explicit_le(ts: str) -> None:
     (ds,) = make_ct_series(1, transfer_syntax=ts, rows=64, cols=64)
     expected = ds.pixel_array.copy()
+    expected_sop_instance_uid = ds.SOPInstanceUID
+    expected_media_storage_sop_instance_uid = ds.file_meta.MediaStorageSOPInstanceUID
     assert ds.file_meta.TransferSyntaxUID.is_compressed
     out = to_uncompressed(ds)
     assert out.file_meta.TransferSyntaxUID == ExplicitVRLittleEndian
     assert not out.file_meta.TransferSyntaxUID.is_compressed
     assert np.array_equal(out.pixel_array, expected)
     assert len(out.PixelData) == 64 * 64 * 2
+    assert out.SOPInstanceUID == expected_sop_instance_uid
+    assert out.file_meta.MediaStorageSOPInstanceUID == expected_media_storage_sop_instance_uid
 
 
 def test_uncompressed_passthrough() -> None:

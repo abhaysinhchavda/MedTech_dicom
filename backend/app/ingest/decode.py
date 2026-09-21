@@ -15,7 +15,7 @@ def to_uncompressed(ds: Dataset) -> Dataset:
             ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
         return ds
     try:
-        ds.decompress()
+        ds.decompress(generate_instance_uid=False)
     except Exception as e:  # pylibjpeg raises a zoo of exception types
         raise DecodeError(f"cannot decode transfer syntax {ts.name}: {e}") from e
     ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
