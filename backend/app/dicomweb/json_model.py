@@ -48,9 +48,16 @@ def _values(el: DataElement, vr: str) -> list[Any]:
     """
     raw = el.value
     items = list(raw) if isinstance(raw, MultiValue | list | tuple) else [raw]
+    multivalued = len(items) > 1
     out: list[Any] = []
     for v in items:
         if v is None or v == "":
+            # PS3.18 F.2.5: a single empty value omits "Value" entirely
+            # (handled by the caller's `el.is_empty` check before `_values`
+            # is ever invoked); an empty component *within* a multi-valued
+            # element is instead encoded as JSON null at its position.
+            if multivalued:
+                out.append(None)
             continue
         if vr == "PN":
             pn = v if isinstance(v, PersonName) else PersonName(v)

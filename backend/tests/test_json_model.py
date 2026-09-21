@@ -30,6 +30,19 @@ def test_bulk_data_omitted_by_default_and_included_on_request() -> None:
     assert dataset_to_dicom_json(ds, include_bulk=True)["7FE00010"]["vr"] == "OW"
 
 
+def test_in_memory_pixel_data_vr_resolves_to_ow() -> None:
+    (ds16,) = make_ct_series(1)  # BitsAllocated=16, built in memory (ambiguous "OB or OW")
+    assert dataset_to_dicom_json(ds16, include_bulk=True)["7FE00010"]["vr"] == "OW"
+
+    ds8 = Dataset()
+    ds8.BitsAllocated = 8
+    ds8.Rows = 2
+    ds8.Columns = 2
+    ds8.SamplesPerPixel = 1
+    ds8.PixelData = b"\x01\x02\x03\x04"
+    assert dataset_to_dicom_json(ds8, include_bulk=True)["7FE00010"]["vr"] == "OB"
+
+
 def test_sequences_recurse() -> None:
     ds = Dataset()
     item = Dataset()
@@ -64,6 +77,18 @@ def test_pn_ideographic_and_phonetic_components_are_split() -> None:
             }
         ],
     }
+
+
+def test_multivalued_blank_components_are_null_in_position() -> None:
+    ds = Dataset()
+    ds.add(DataElement(0x00081090, "LO", ["", "B"]))
+    j = dataset_to_dicom_json(ds)
+    assert j["00081090"] == {"vr": "LO", "Value": [None, "B"]}
+
+    ds2 = Dataset()
+    ds2.add(DataElement(0x00081090, "LO", ["", ""]))
+    j2 = dataset_to_dicom_json(ds2)
+    assert j2["00081090"] == {"vr": "LO", "Value": [None, None]}
 
 
 def test_matches_pydicom_reference_for_non_bulk() -> None:
