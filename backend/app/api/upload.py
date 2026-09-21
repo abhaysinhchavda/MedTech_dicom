@@ -16,8 +16,12 @@ from app.ingest.indexer import ingest_files
 
 router = APIRouter(prefix="/api", tags=["upload"])
 
+CHUNK_SIZE = 1 << 20
 
-def _safe_extract(zf: zipfile.ZipFile, dest: Path) -> list[Path]:
+
+def _safe_extract(
+    zf: zipfile.ZipFile, dest: Path, limit: int, total: int
+) -> tuple[list[Path], int]:
     out: list[Path] = []
     for info in zf.infolist():
         name = PurePosixPath(info.filename)
@@ -25,12 +29,20 @@ def _safe_extract(zf: zipfile.ZipFile, dest: Path) -> list[Path]:
             raise HTTPException(400, f"zip entry has an unsafe path: {info.filename}")
         if info.is_dir():
             continue
+        # Fast-reject using the header's declared size; the header can lie, so the
+        # authoritative check happens below while copying actual decompressed bytes.
+        if total + info.file_size > limit:
+            raise HTTPException(413, f"zip contents exceed {limit} bytes")
         target = dest / Path(*name.parts)
         target.parent.mkdir(parents=True, exist_ok=True)
         with zf.open(info) as src, target.open("wb") as dst:
-            shutil.copyfileobj(src, dst)
+            while chunk := src.read(CHUNK_SIZE):
+                total += len(chunk)
+                if total > limit:
+                    raise HTTPException(413, f"zip contents exceed {limit} bytes")
+                dst.write(chunk)
         out.append(target)
-    return out
+    return out, total
 
 
 @router.post("/upload")
@@ -41,18 +53,24 @@ async def upload(files: list[UploadFile], conn: sqlite3.Connection = Depends(get
     tmp = Path(tempfile.mkdtemp(prefix="upload-"))
     try:
         paths: list[Path] = []
-        for f in files:
-            data = await f.read()
-            total += len(data)
-            if total > limit:
-                raise HTTPException(413, f"upload exceeds {settings.max_upload_mb} MB")
+        for idx, f in enumerate(files):
+            # Each part gets its own subdirectory so identical basenames from
+            # different source folders (or different zip parts) never collide.
+            part_dir = tmp / f"{idx:06d}"
+            part_dir.mkdir(parents=True, exist_ok=True)
             name = Path(f.filename or "file").name
-            p = tmp / name
-            p.write_bytes(data)
+            p = part_dir / name
+            with p.open("wb") as out:
+                while chunk := await f.read(CHUNK_SIZE):
+                    total += len(chunk)
+                    if total > limit:
+                        raise HTTPException(413, f"upload exceeds {settings.max_upload_mb} MB")
+                    out.write(chunk)
             if name.lower().endswith(".zip"):
                 try:
                     with zipfile.ZipFile(p) as zf:
-                        paths.extend(_safe_extract(zf, tmp / f"{name}.d"))
+                        extracted, total = _safe_extract(zf, part_dir / f"{name}.d", limit, total)
+                        paths.extend(extracted)
                 except zipfile.BadZipFile as e:
                     raise HTTPException(400, f"{name}: not a valid zip") from e
             else:

@@ -47,3 +47,35 @@ def test_too_large_rejected(client) -> None:
     big = b"\0" * (6 * 1024 * 1024)  # settings fixture sets max_upload_mb=5
     r = client.post("/api/upload", files=[("files", ("big.dcm", big, "application/dicom"))])
     assert r.status_code == 413
+
+
+def test_duplicate_basenames_across_folders_are_all_ingested(client, tmp_path: Path) -> None:
+    d1 = make_ct_series(3)
+    d2 = make_ct_series(3)
+    paths1 = write_series(d1, tmp_path / "a")
+    paths2 = write_series(d2, tmp_path / "b")
+    renamed: list[Path] = []
+    for paths in (paths1, paths2):
+        for i, p in enumerate(paths):
+            new_p = p.with_name(f"{i}.dcm")
+            p.rename(new_p)
+            renamed.append(new_p)
+    r = client.post("/api/upload", files=_files(renamed))
+    j = r.json()
+    assert r.status_code == 200
+    assert j["accepted"] == 6
+    assert len(j["studyUids"]) == 2
+
+
+def test_zip_bomb_rejected(client) -> None:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("big.dcm", b"\0" * (6 * 1024 * 1024))  # settings fixture caps at 5 MB
+    files = [("files", ("bomb.zip", buf.getvalue(), "application/zip"))]
+    r = client.post("/api/upload", files=files)
+    assert r.status_code == 413
+
+
+def test_corrupted_zip_rejected(client) -> None:
+    r = client.post("/api/upload", files=[("files", ("x.zip", b"not a zip", "application/zip"))])
+    assert r.status_code == 400
