@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import health
 from app.config import Settings, get_settings
 from app.db import connect, init_schema
-from app.dicomweb import qido
+from app.dicomweb import qido, wado
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -25,6 +25,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.include_router(health.router)
     app.include_router(qido.router)
+    app.include_router(wado.router)
     return app
 
 
