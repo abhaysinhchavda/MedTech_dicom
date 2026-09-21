@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import health
 from app.config import Settings, get_settings
 from app.db import connect, init_schema
+from app.dicomweb import qido
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -23,6 +24,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         expose_headers=["X-Sort-Method", "Content-Length"],
     )
     app.include_router(health.router)
+    app.include_router(qido.router)
     return app
 
 
