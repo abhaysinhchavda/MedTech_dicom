@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,27 +11,37 @@ from app.api import health, upload, volume
 from app.config import Settings, get_settings
 from app.db import connect, init_schema
 from app.dicomweb import qido, wado
+from app.ingest.indexer import ingest_directory
+
+log = logging.getLogger("dicomviewer")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
-    app = FastAPI(title="DICOM 3D Web Viewer API")
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        if settings.samples_dir.is_dir():
+            summary = ingest_directory(app.state.db, settings.samples_dir, settings.store_dir)
+            log.info(
+                "samples ingested: %d accepted, %d skipped",
+                summary.accepted,
+                len(summary.skipped),
+            )
+        yield
+        app.state.db.close()
+
+    app = FastAPI(title="DICOM 3D Web Viewer API", lifespan=lifespan)
     app.state.settings = settings
     conn = connect(settings.db_path)
     init_schema(conn)
     app.state.db = conn
     app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_methods=["*"],
-        allow_headers=["*"],
-        expose_headers=["X-Sort-Method", "Content-Length"],
+        CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["*"],
+        allow_headers=["*"], expose_headers=["X-Sort-Method", "Content-Length"],
     )
-    app.include_router(health.router)
-    app.include_router(qido.router)
-    app.include_router(wado.router)
-    app.include_router(volume.router)
-    app.include_router(upload.router)
+    for r in (health.router, volume.router, upload.router, qido.router, wado.router):
+        app.include_router(r)
     return app
 
 
