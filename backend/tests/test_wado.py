@@ -109,7 +109,7 @@ def test_multiframe_frames_and_rendered(client, tmp_path: Path) -> None:
     assert r.status_code == 200 and r.headers["content-type"] == "image/png"
     img = Image.open(io.BytesIO(r.content))
     assert img.size == (8, 8) and img.mode == "L"
-    assert len(set(img.getdata())) == 1
+    assert len(np.unique(np.asarray(img))) == 1
 
     instances_url = (
         f"/dicomweb/studies/{ds.StudyInstanceUID}/series/{ds.SeriesInstanceUID}/instances"
