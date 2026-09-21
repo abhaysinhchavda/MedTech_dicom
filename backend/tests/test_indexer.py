@@ -72,3 +72,19 @@ def test_non_volume_series_is_indexed_with_reason(tmp_path: Path) -> None:
     (sid,) = [r[0] for r in c.execute("SELECT series_uid FROM series")]
     s = finalize_series(c, sid)
     assert not s.volume.is_volume and s.volume.reason == "irregular slice spacing"
+
+
+def test_malformed_image_tags_are_skipped_not_fatal(tmp_path: Path) -> None:
+    c = _conn(tmp_path)
+    dsets = make_ct_series(3)
+    write_series(dsets, tmp_path / "in")
+    (bad,) = make_ct_series(1)
+    del bad.Rows
+    pydicom.dcmwrite(tmp_path / "in" / "norows.dcm", bad, enforce_file_format=True)
+    summary = ingest_directory(c, tmp_path / "in", tmp_path / "store")
+    assert summary.accepted == 3
+    assert len(summary.skipped) == 1
+    assert summary.skipped[0].file == "norows.dcm"
+    assert summary.skipped[0].reason
+    s = repo.get_series(c, dsets[0].SeriesInstanceUID)
+    assert s.volume.is_volume

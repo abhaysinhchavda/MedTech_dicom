@@ -130,11 +130,14 @@ def ingest_files(conn: sqlite3.Connection, paths: list[Path], store_dir: Path) -
         try:
             ds = read_dicom(p)
             to_uncompressed(ds)
+            dest = file_instance(ds, store_dir)
+            index_instance(conn, ds, dest)
         except (NotDicomError, DecodeError) as e:
             summary.skipped.append(SkippedFile(p.name, str(e)))
             continue
-        dest = file_instance(ds, store_dir)
-        index_instance(conn, ds, dest)
+        except (AttributeError, KeyError, ValueError, TypeError) as e:
+            summary.skipped.append(SkippedFile(p.name, f"{type(e).__name__}: {e}"))
+            continue
         touched[str(ds.SeriesInstanceUID)] = str(ds.StudyInstanceUID)
         summary.accepted += 1
     for series_uid in touched:
