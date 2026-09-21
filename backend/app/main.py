@@ -1,3 +1,12 @@
+"""Entry point: run with uvicorn's factory mode, e.g.
+
+    uvicorn app.main:create_app --factory --reload --port 8001
+
+There is deliberately no module-level `app = create_app()` here: that would call
+get_settings() and open the real db at *import* time (e.g. on every pytest collection),
+bypassing the lifespan startup/shutdown hooks entirely.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -43,6 +52,3 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     for r in (health.router, volume.router, upload.router, qido.router, wado.router):
         app.include_router(r)
     return app
-
-
-app = create_app()
