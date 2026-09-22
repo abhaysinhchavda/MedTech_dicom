@@ -64,3 +64,42 @@ test('releaseVolume removes from cache', () => {
   releaseVolume('cornerstoneStreamingImageVolume:S');
   expect(removeVolumeLoadObject).toHaveBeenCalledWith('cornerstoneStreamingImageVolume:S');
 });
+
+test('releaseVolume still removes an in-flight (not-yet-cached) volume', () => {
+  // cache.getVolume only returns a value once the load resolves, so this must
+  // not gate on it -- an in-flight load must still be released.
+  removeVolumeLoadObject.mockClear();
+  releaseVolume(volumeIdFor('U'));
+  expect(removeVolumeLoadObject).toHaveBeenCalledWith(volumeIdFor('U'));
+});
+
+test('releaseVolume does not throw when the id is not actually cached', () => {
+  removeVolumeLoadObject.mockImplementationOnce(() => {
+    throw new Error('no volume with id missing');
+  });
+  expect(() => releaseVolume('missing')).not.toThrow();
+});
+
+test('aborting mid-load rejects with AbortError and releases the cached volume', async () => {
+  removeVolumeLoadObject.mockClear();
+  const controller = new AbortController();
+  const p = loadVolume(volumeIdFor('AB'), ['wadors:a'], undefined, controller.signal);
+  await Promise.resolve();
+  await Promise.resolve(); // let createAndCacheVolume settle
+  controller.abort();
+  await expect(p).rejects.toMatchObject({ name: 'AbortError' });
+  expect(removeVolumeLoadObject).toHaveBeenCalledWith(volumeIdFor('AB'));
+});
+
+test('aborting after a successful resolve is a no-op', async () => {
+  removeVolumeLoadObject.mockClear();
+  const controller = new AbortController();
+  const p = loadVolume(volumeIdFor('AC'), ['wadors:a'], undefined, controller.signal);
+  await Promise.resolve();
+  await Promise.resolve();
+  fire('VC', { volumeId: volumeIdFor('AC') });
+  await expect(p).resolves.toMatchObject({ volumeId: volumeIdFor('AC') });
+  controller.abort();
+  await Promise.resolve();
+  expect(removeVolumeLoadObject).not.toHaveBeenCalled();
+});
