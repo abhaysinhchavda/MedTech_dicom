@@ -24,11 +24,17 @@ hiring manager in medical imaging screens for:
 The viewer opens a CT/MR series as a **volume**, never as a flat image stack.
 The four-panel layout (axial, sagittal, coronal, 3D) is the product.
 
+**v1 is brain-focused.** The bundled sample data, the VOI/volume-rendering
+presets, and the demo flow all center on brain MR. The backend itself stays
+modality-agnostic (it validates and serves any regular 3D DICOM grid); only
+the *sample selection and presets* are scoped to brain for this v1.
+
 ## 2. Scope
 
 ### In scope (v1)
 
-- Bundled public anonymized volumetric sample studies (2–3), fetched by a script.
+- Bundled public anonymized volumetric sample studies (2, both brain MR),
+  fetched by a script.
 - Drag-and-drop upload of a DICOM folder or `.zip`.
 - Backend volume validation: is this series a regular 3D grid, and if not, why.
 - Study browser: study list → series grid with thumbnails; non-volume series
@@ -39,7 +45,7 @@ The four-panel layout (axial, sagittal, coronal, 3D) is the product.
 - MPR interactions: synchronized crosshairs, slice scroll per plane,
   window/level, zoom, pan, modality VOI presets, reset.
 - 3D interactions: trackball rotate, zoom, pan, transfer-function presets
-  (CT bone, CT lung, CT soft tissue, MR default), reset.
+  (CT bone, CT soft tissue, MR default, MR T2 brain), reset.
 - Corner overlays (plane label, slice i/N, W/L, zoom) and a metadata side
   panel (dimensions, spacing, orientation, modality).
 - Server-side decoding of compressed transfer syntaxes at ingest.
@@ -341,10 +347,10 @@ bottom-right 3D. Any panel can be maximised by double-click.
 | Pan | middle-drag |
 | Zoom | right-drag / wheel |
 
-**Toolbar:** crosshairs on/off, VOI preset dropdown for MPR (CT: lung
-−600/1500, bone 400/1800, brain 40/80, soft tissue 50/400; MR: from header),
-3D preset dropdown (Cornerstone `VIEWPORT_PRESETS`: CT-Bone, CT-Lung,
-CT-Soft-Tissue, MR-Default), invert (MPR), reset all.
+**Toolbar:** crosshairs on/off, VOI preset dropdown for MPR (CT: brain
+40/80, bone 400/1800, soft tissue 50/400; MR: from header),
+3D preset dropdown (Cornerstone `VIEWPORT_PRESETS`: CT-Bone,
+CT-Soft-Tissue, MR-Default, MR-T2-Brain), invert (MPR), reset all.
 
 ### 5.3 Data flow — opening a series
 
@@ -454,21 +460,28 @@ manifest pins UIDs and counts rather than zip checksums; after extraction the
 script re-reads every file with pydicom and fails loudly on a mismatch.)
 Every sample must pass `volume_info` (≥ 3 slices, regular spacing):
 
-- **CT chest** — TCIA LIDC-IDRI, subject `LIDC-IDRI-0365`, series
-  `1.3.6.1.4.1.14519.5.2.1.6279.6001.207544473852086582434957174616`,
-  101 slices, ~53 MB, CC BY 3.0. Stored uncompressed — the hero demo for
-  bone / lung 3D presets.
+v1 is brain-only: both samples are brain MR from the same UPENN-GBM patient
+(`UPENN-GBM-00041`), one compressed and one uncompressed so both the
+transcoded-decode and plain-decode ingest paths are exercised on real data.
+There is no CT brain series in TCIA's brain collections, so no CT sample is
+bundled in v1 — the backend itself remains modality-agnostic and a CT sample
+can be reintroduced later without code changes.
+
 - **MR brain (T1 MPRAGE)** — TCIA UPENN-GBM, subject `UPENN-GBM-00041`,
   series `1.3.6.1.4.1.14519.5.2.1.238667833945377278535172479340077807244`,
   160 slices, ~16 MB, CC BY 4.0. The fetch script **transcodes this series to
   JPEG 2000 Lossless** (`Dataset.compress`) before saving, verifying pixel
   equality, so the ingest decode path is exercised on real data.
+- **MR brain (T2-FLAIR)** — TCIA UPENN-GBM, subject `UPENN-GBM-00041`,
+  series `1.3.6.1.4.1.14519.5.2.1.24745356049796355440510272164766429919`,
+  60 slices, ~6 MB, CC BY 4.0. Stored uncompressed, covering the plain-decode
+  ingest path.
 
 Both are fetched via TCIA's public REST endpoint
 `https://services.cancerimagingarchive.net/nbia-api/services/v1/getImage?SeriesInstanceUID=<uid>`
 (returns a zip; no authentication for these collections). No binary sample
-data is committed; the README credits both collections as their licenses
-require.
+data is committed; the README credits the UPENN-GBM collection as its
+license requires.
 
 ## 8. Tooling and conventions
 

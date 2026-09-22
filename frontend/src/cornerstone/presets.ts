@@ -6,9 +6,8 @@ export interface VoiPreset {
 
 export const VOI_PRESETS: Record<'CT' | 'MR', VoiPreset[]> = {
   CT: [
-    { name: 'Lung', center: -600, width: 1500 },
-    { name: 'Bone', center: 400, width: 1800 },
     { name: 'Brain', center: 40, width: 80 },
+    { name: 'Bone', center: 400, width: 1800 },
     { name: 'Soft tissue', center: 50, width: 400 },
   ],
   // MR has no standard center/width VOI windows like CT HU windows; MR windowing
@@ -17,8 +16,8 @@ export const VOI_PRESETS: Record<'CT' | 'MR', VoiPreset[]> = {
 };
 
 export const VOLUME_PRESETS: Record<'CT' | 'MR', string[]> = {
-  CT: ['CT-Bone', 'CT-Lung', 'CT-Soft-Tissue', 'CT-AAA'],
-  MR: ['MR-Default', 'MR-T2-Brain', 'MR-Angio'],
+  CT: ['CT-Bone', 'CT-Soft-Tissue'],
+  MR: ['MR-Default', 'MR-T2-Brain'],
 };
 
 const key = (m: string | null): 'CT' | 'MR' => (m === 'MR' ? 'MR' : 'CT');

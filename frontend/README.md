@@ -38,3 +38,12 @@ See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rule
 Root cause: `@kitware/vtk.js` (a dependency of `@cornerstonejs/core`) pulls in `xmlbuilder2`, whose `XMLBuilderCBImpl extends EventEmitter` from Node's `events` module. Vite stubs bare Node builtins as empty modules for the browser, so `EventEmitter` was `undefined` at class-definition time. This was not caused by the Vite/Rolldown version, the wasm codec packages, or `optimizeDeps` config — all were ruled out.
 
 Fix: added the `events` package as an explicit dependency and aliased it in `vite.config.ts` (`resolve: { alias: { events: 'events/events.js' } }`) so the real userland `EventEmitter` polyfill resolves in the browser instead of Vite's empty Node-builtin stub. `@cornerstonejs/metadata`, `@cornerstonejs/utils`, and `@testing-library/dom` were also added as explicit dependencies (previously implicit peer/transitive deps).
+
+## Sample data credits
+
+v1 is brain-focused: both bundled sample series are brain MR from the same
+UPENN-GBM patient.
+
+- UPENN-GBM (CC BY 4.0) — https://doi.org/10.7937/TCIA.709X-DN49
+
+Data courtesy of The Cancer Imaging Archive (TCIA).
