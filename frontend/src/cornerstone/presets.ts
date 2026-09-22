@@ -11,6 +11,8 @@ export const VOI_PRESETS: Record<'CT' | 'MR', VoiPreset[]> = {
     { name: 'Brain', center: 40, width: 80 },
     { name: 'Soft tissue', center: 50, width: 400 },
   ],
+  // MR has no standard center/width VOI windows like CT HU windows; MR windowing
+  // is driven by the volume presets in VOLUME_PRESETS.MR instead.
   MR: [],
 };
 
