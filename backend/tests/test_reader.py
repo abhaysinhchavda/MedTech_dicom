@@ -34,27 +34,49 @@ def test_rejects_path_traversal_uid(tmp_path: Path) -> None:
     # pydicom only *warns* on a malformed UI value (it doesn't raise), so
     # without explicit validation this would sail through read_dicom and later
     # get joined straight into a store path by app.ingest.store.file_instance.
+    # pydicom warns twice for a value like this: once when the attribute is
+    # assigned, and again when dcmread lazily converts+validates the raw bytes
+    # on first access -- read_dicom's own UID_TAGS check is what triggers that
+    # second one. Both pytest.warns below document (and assert) that pydicom
+    # does in fact consider this value invalid; that's expected fixture noise,
+    # not product noise, and asserting it keeps `pytest -q` warning-free.
     (ds,) = make_ct_series(1)
-    ds.StudyInstanceUID = "../../../../pwned"
+    with pytest.warns(UserWarning, match="Invalid value for VR UI"):
+        ds.StudyInstanceUID = "../../../../pwned"
     p = tmp_path / "traversal.dcm"
     pydicom.dcmwrite(p, ds, enforce_file_format=True)
-    with pytest.raises(NotDicomError, match="StudyInstanceUID"):
+    with (
+        pytest.warns(UserWarning, match="Invalid value for VR UI"),
+        pytest.raises(NotDicomError, match="StudyInstanceUID"),
+    ):
         read_dicom(p)
 
 
 def test_rejects_overlong_uid(tmp_path: Path) -> None:
     (ds,) = make_ct_series(1)
-    ds.SeriesInstanceUID = "1." * 32 + "1"  # 65 characters, over the 64-char UI limit
+    with pytest.warns(UserWarning, match="exceeds the maximum length"):
+        ds.SeriesInstanceUID = "1." * 32 + "1"  # 65 characters, over the 64-char UI limit
     p = tmp_path / "overlong.dcm"
     pydicom.dcmwrite(p, ds, enforce_file_format=True)
-    with pytest.raises(NotDicomError, match="SeriesInstanceUID"):
+    with (
+        pytest.warns(UserWarning, match="exceeds the maximum length"),
+        pytest.raises(NotDicomError, match="SeriesInstanceUID"),
+    ):
         read_dicom(p)
 
 
 def test_rejects_uid_with_letters(tmp_path: Path) -> None:
     (ds,) = make_ct_series(1)
-    ds.SOPInstanceUID = "1.2.abc"
+    with pytest.warns(UserWarning, match="Invalid value for VR UI"):
+        ds.SOPInstanceUID = "1.2.abc"
     p = tmp_path / "letters.dcm"
-    pydicom.dcmwrite(p, ds, enforce_file_format=True)
-    with pytest.raises(NotDicomError, match="SOPInstanceUID"):
+    # Unlike Study/SeriesInstanceUID, dcmwrite(enforce_file_format=True) also
+    # mirrors SOPInstanceUID into file_meta.MediaStorageSOPInstanceUID, which
+    # revalidates (and re-warns on) the same invalid value a second time here.
+    with pytest.warns(UserWarning, match="Invalid value for VR UI"):
+        pydicom.dcmwrite(p, ds, enforce_file_format=True)
+    with (
+        pytest.warns(UserWarning, match="Invalid value for VR UI"),
+        pytest.raises(NotDicomError, match="SOPInstanceUID"),
+    ):
         read_dicom(p)

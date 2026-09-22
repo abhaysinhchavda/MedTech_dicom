@@ -36,6 +36,7 @@ def test_file_instance_rejects_path_escape(tmp_path: Path) -> None:
     # exercises store.py's own containment check as defense in depth for any
     # other caller that builds a Dataset without going through the reader.
     (ds,) = make_ct_series(1)
-    ds.StudyInstanceUID = "../../../../pwned"
+    with pytest.warns(UserWarning, match="Invalid value for VR UI"):
+        ds.StudyInstanceUID = "../../../../pwned"
     with pytest.raises(ValueError, match="escapes root"):
         file_instance(ds, tmp_path)
