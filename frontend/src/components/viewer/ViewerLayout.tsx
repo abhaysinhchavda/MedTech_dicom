@@ -51,9 +51,20 @@ export function ViewerLayout({
     });
     createToolGroups(ENGINE_ID);
     let alive = true;
-    void showVolume(engine, volumeId, modality).then(() => {
-      if (alive) setReady(true);
-    });
+    // React StrictMode's dev-only mount->cleanup->remount can tear this
+    // engine down (destroyViewerLayout) while showVolume's promise is still
+    // in flight; when it then resumes and touches the now-destroyed engine,
+    // it rejects. That's an expected artifact of the discarded first attempt,
+    // not a real failure -- only surface it if this effect instance is still
+    // the live one.
+    void showVolume(engine, volumeId, modality).then(
+      () => {
+        if (alive) setReady(true);
+      },
+      (e: unknown) => {
+        if (alive) console.error('showVolume failed', e);
+      },
+    );
     return () => {
       alive = false;
       setReady(false);
@@ -93,7 +104,9 @@ export function ViewerLayout({
       const vp = e.getViewport(id) as Types.IVolumeViewport;
       vp.resetProperties();
     }
-    void showVolume(e, volumeId, modality);
+    void showVolume(e, volumeId, modality).catch((err: unknown) =>
+      console.error('showVolume failed', err),
+    );
   };
   const onCrosshairs = (on: boolean) => {
     setCrosshairs(on);
