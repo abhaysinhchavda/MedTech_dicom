@@ -30,6 +30,20 @@ export function initCornerstone(): Promise<void> {
     dicomImageLoaderInit({
       maxWebWorkers: Math.max(1, Math.floor((navigator.hardwareConcurrency ?? 2) / 2)),
     });
+    // @cornerstonejs/dicom-image-loader's xhrRequest (imageLoader/internal/xhrRequest.js)
+    // rejects an in-flight image fetch with the raw XMLHttpRequest object --
+    // not an Error -- from xhr.onabort/onerror. Nothing upstream attaches a
+    // .catch to that per-image promise, so cancelling a load (e.g.
+    // cache.removeVolumeLoadObject() when a series switch or unmount aborts
+    // volume.ts's loadVolume, including React StrictMode's dev-only
+    // mount->cleanup->remount cycle) reliably surfaces as an unhandled
+    // promise rejection. It carries no diagnostic value beyond what the
+    // IMAGE_LOAD_ERROR event already reports (handled in
+    // cornerstone/volume.ts's onErr), so swallow specifically -- and only --
+    // rejections shaped like this one.
+    window.addEventListener('unhandledrejection', (e) => {
+      if (e.reason instanceof XMLHttpRequest) e.preventDefault();
+    });
     for (const T of [
       WindowLevelTool,
       PanTool,
