@@ -30,3 +30,11 @@ If you are developing a production application, we recommend enabling type-aware
 ```
 
 See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+
+## Troubleshooting
+
+**Blank page, every `@cornerstonejs/*` import throws `TypeError: Class extends value undefined is not a constructor or null` (dev and production build).**
+
+Root cause: `@kitware/vtk.js` (a dependency of `@cornerstonejs/core`) pulls in `xmlbuilder2`, whose `XMLBuilderCBImpl extends EventEmitter` from Node's `events` module. Vite stubs bare Node builtins as empty modules for the browser, so `EventEmitter` was `undefined` at class-definition time. This was not caused by the Vite/Rolldown version, the wasm codec packages, or `optimizeDeps` config — all were ruled out.
+
+Fix: added the `events` package as an explicit dependency and aliased it in `vite.config.ts` (`resolve: { alias: { events: 'events/events.js' } }`) so the real userland `EventEmitter` polyfill resolves in the browser instead of Vite's empty Node-builtin stub. `@cornerstonejs/metadata`, `@cornerstonejs/utils`, and `@testing-library/dom` were also added as explicit dependencies (previously implicit peer/transitive deps).
