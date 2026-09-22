@@ -22,5 +22,10 @@ export default defineConfig({
   },
   worker: { format: 'es' },
   server: { port: 5173 },
-  test: { environment: 'jsdom', setupFiles: ['./vitest.setup.ts'], globals: true, exclude: ['e2e/**', 'node_modules/**'] },
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./vitest.setup.ts'],
+    globals: true,
+    exclude: ['e2e/**', 'node_modules/**'],
+  },
 });

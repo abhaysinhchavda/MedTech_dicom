@@ -7,10 +7,15 @@ import { ErrorBanner } from '../ui/ErrorBanner';
 import { Spinner } from '../ui/Spinner';
 
 function Card({ s, info }: { s: Series; info: VolumeInfo | undefined }) {
+  const borderClass =
+    info === undefined
+      ? 'border-neutral-800'
+      : info.isVolume
+        ? 'border-neutral-700 hover:border-sky-500'
+        : 'border-neutral-800 opacity-50';
+
   const body = (
-    <div
-      className={`rounded border p-2 w-44 ${info?.isVolume ? 'border-neutral-700 hover:border-sky-500' : 'border-neutral-800 opacity-50'}`}
-    >
+    <div className={`rounded border p-2 w-44 ${borderClass}`}>
       {s.thumbSopUid && (
         <img
           alt=""
@@ -24,7 +29,10 @@ function Card({ s, info }: { s: Series; info: VolumeInfo | undefined }) {
       <div className="text-xs text-neutral-400">
         {s.modality} · {s.numInstances} images
       </div>
-      {info?.dims && <div className="text-xs text-neutral-400">{info.dims.join(' × ')}</div>}
+      {info === undefined && <div className="text-xs text-neutral-500">checking…</div>}
+      {info?.isVolume && info.dims && (
+        <div className="text-xs text-neutral-400">{info.dims.join(' × ')}</div>
+      )}
       {info && !info.isVolume && <div className="text-xs text-amber-400">{info.reason}</div>}
     </div>
   );

@@ -17,7 +17,7 @@ export function UploadDropzone({ onDone }: { onDone: (s: UploadSummary) => void 
       setSummary(s);
       onDone(s);
     } catch (e) {
-      setError((e as Error).message);
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -41,7 +41,17 @@ export function UploadDropzone({ onDone }: { onDone: (s: UploadSummary) => void 
           multiple
           className="hidden"
           aria-label="choose files"
-          onChange={(e) => void send(Array.from(e.target.files ?? []))}
+          onChange={(e) => {
+            const input = e.target;
+            const files = Array.from(input.files ?? []);
+            void (async () => {
+              try {
+                await send(files);
+              } finally {
+                input.value = '';
+              }
+            })();
+          }}
         />
       </label>
       {busy && (
