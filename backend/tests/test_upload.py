@@ -43,6 +43,18 @@ def test_zip_path_traversal_rejected(client) -> None:
     assert r.status_code == 400
 
 
+def test_zip_path_traversal_backslash_rejected(client) -> None:
+    # A backslash-containing entry name is a single opaque PurePosixPath part
+    # (no "/" in it), so it slips past the "'..' in parts" check -- but on
+    # Windows, Path(*parts) then reinterprets the backslash as a separator,
+    # which is exactly the escape the shared containment check must catch.
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("..\\evil.dcm", b"x")
+    r = client.post("/api/upload", files=[("files", ("s.zip", buf.getvalue(), "application/zip"))])
+    assert r.status_code == 400
+
+
 def test_too_large_rejected(client) -> None:
     big = b"\0" * (6 * 1024 * 1024)  # settings fixture sets max_upload_mb=5
     r = client.post("/api/upload", files=[("files", ("big.dcm", big, "application/dicom"))])

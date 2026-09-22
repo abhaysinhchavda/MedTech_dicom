@@ -9,10 +9,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from starlette.concurrency import run_in_threadpool
 
 from app.config import Settings
 from app.dicomweb.deps import get_db, get_settings_dep
 from app.ingest.indexer import ingest_files
+from app.ingest.store import _ensure_within
 
 router = APIRouter(prefix="/api", tags=["upload"])
 
@@ -34,6 +36,14 @@ def _safe_extract(
         if total + info.file_size > limit:
             raise HTTPException(413, f"zip contents exceed {limit} bytes")
         target = dest / Path(*name.parts)
+        # Belt-and-suspenders: the PurePosixPath parts check above is fooled by a
+        # backslash-containing entry name (e.g. "..\\evil.dcm") on Windows, where
+        # Path(*name.parts) then re-interprets the backslash as a separator. This
+        # containment check is authoritative regardless of how `target` was built.
+        try:
+            _ensure_within(dest, target)
+        except ValueError as e:
+            raise HTTPException(400, f"zip entry has an unsafe path: {info.filename}") from e
         target.parent.mkdir(parents=True, exist_ok=True)
         with zf.open(info) as src, target.open("wb") as dst:
             while chunk := src.read(CHUNK_SIZE):
@@ -75,7 +85,10 @@ async def upload(files: list[UploadFile], conn: sqlite3.Connection = Depends(get
                     raise HTTPException(400, f"{name}: not a valid zip") from e
             else:
                 paths.append(p)
-        summary = ingest_files(conn, paths, settings.store_dir)
+        # ingest_files does blocking disk + sqlite I/O; run it off the event loop.
+        # The sqlite3 connection was opened with check_same_thread=False (see
+        # app.db.connect), so handing it to the threadpool worker is safe.
+        summary = await run_in_threadpool(ingest_files, conn, paths, settings.store_dir)
         return {"accepted": summary.accepted, "skipped": [asdict(s) for s in summary.skipped],
                 "studyUids": summary.study_uids}
     finally:

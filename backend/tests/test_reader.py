@@ -28,3 +28,33 @@ def test_rejects_object_without_pixel_data(tmp_path: Path) -> None:
     pydicom.dcmwrite(p, ds, enforce_file_format=True)
     with pytest.raises(NotDicomError, match="PixelData"):
         read_dicom(p)
+
+
+def test_rejects_path_traversal_uid(tmp_path: Path) -> None:
+    # pydicom only *warns* on a malformed UI value (it doesn't raise), so
+    # without explicit validation this would sail through read_dicom and later
+    # get joined straight into a store path by app.ingest.store.file_instance.
+    (ds,) = make_ct_series(1)
+    ds.StudyInstanceUID = "../../../../pwned"
+    p = tmp_path / "traversal.dcm"
+    pydicom.dcmwrite(p, ds, enforce_file_format=True)
+    with pytest.raises(NotDicomError, match="StudyInstanceUID"):
+        read_dicom(p)
+
+
+def test_rejects_overlong_uid(tmp_path: Path) -> None:
+    (ds,) = make_ct_series(1)
+    ds.SeriesInstanceUID = "1." * 32 + "1"  # 65 characters, over the 64-char UI limit
+    p = tmp_path / "overlong.dcm"
+    pydicom.dcmwrite(p, ds, enforce_file_format=True)
+    with pytest.raises(NotDicomError, match="SeriesInstanceUID"):
+        read_dicom(p)
+
+
+def test_rejects_uid_with_letters(tmp_path: Path) -> None:
+    (ds,) = make_ct_series(1)
+    ds.SOPInstanceUID = "1.2.abc"
+    p = tmp_path / "letters.dcm"
+    pydicom.dcmwrite(p, ds, enforce_file_format=True)
+    with pytest.raises(NotDicomError, match="SOPInstanceUID"):
+        read_dicom(p)
