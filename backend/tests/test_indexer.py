@@ -78,6 +78,9 @@ def test_malformed_image_tags_are_skipped_not_fatal(tmp_path: Path) -> None:
     c = _conn(tmp_path)
     dsets = make_ct_series(3)
     write_series(dsets, tmp_path / "in")
+    # `bad` belongs to a brand-new study/series (make_ct_series generates fresh
+    # UIDs), so it's the only file that would ever touch that study -- if
+    # indexing it fails, no ghost study/series row (or orphan file) must remain.
     (bad,) = make_ct_series(1)
     del bad.Rows
     pydicom.dcmwrite(tmp_path / "in" / "norows.dcm", bad, enforce_file_format=True)
@@ -88,3 +91,7 @@ def test_malformed_image_tags_are_skipped_not_fatal(tmp_path: Path) -> None:
     assert summary.skipped[0].reason
     s = repo.get_series(c, dsets[0].SeriesInstanceUID)
     assert s.volume.is_volume
+    assert repo.get_study(c, bad.StudyInstanceUID) is None
+    assert repo.get_series(c, bad.SeriesInstanceUID) is None
+    orphans = list((tmp_path / "store").rglob(f"{bad.SOPInstanceUID}.dcm"))
+    assert orphans == []

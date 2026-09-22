@@ -60,7 +60,8 @@ def test_finalize_writes_volume_columns(tmp_path: Path) -> None:
         True, None, (16, 16, 3), (0.5, 0.5, 1.0), (0.0, 0.0, 0.0), (1, 0, 0, 0, 1, 0, 0, 0, 1)
     )
     repo.update_series_finalized(
-        c, "SE1", instance_count=3, thumb_sop_uid="I1", sort_method="geometry", volume=v
+        c, "SE1", instance_count=3, frame_count=3,
+        thumb_sop_uid="I1", sort_method="geometry", volume=v,
     )
     s = repo.get_series(c, "SE1")
     assert s.instance_count == 3 and s.thumb_sop_uid == "I1" and s.sort_method == "geometry"
@@ -76,7 +77,8 @@ def test_upsert_series_does_not_clobber_finalized_columns(tmp_path: Path) -> Non
         True, None, (16, 16, 3), (0.5, 0.5, 1.0), (0.0, 0.0, 0.0), (1, 0, 0, 0, 1, 0, 0, 0, 1)
     )
     repo.update_series_finalized(
-        c, "SE1", instance_count=3, thumb_sop_uid="I1", sort_method="geometry", volume=v
+        c, "SE1", instance_count=3, frame_count=3,
+        thumb_sop_uid="I1", sort_method="geometry", volume=v,
     )
     repo.upsert_series(c, SeriesRow("SE1", "S1", "MR", "renamed", 9))
     s = repo.get_series(c, "SE1")

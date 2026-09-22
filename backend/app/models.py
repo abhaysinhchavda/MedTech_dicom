@@ -41,10 +41,11 @@ class SeriesRow:
     modality: str | None
     series_desc: str | None
     series_number: int | None
-    instance_count: int = 0
+    instance_count: int = 0  # number of instances (rows), not frames -- feeds QIDO 0020,1209
     thumb_sop_uid: str | None = None
     sort_method: SortMethod | None = None
     volume: VolumeInfo = field(default_factory=lambda: VolumeInfo(False, "not finalized"))
+    frame_count: int = 0  # sum of NumberOfFrames across instances; matches volume dims[2]
 
 
 @dataclass(frozen=True)

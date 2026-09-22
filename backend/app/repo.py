@@ -20,7 +20,6 @@ def upsert_study(conn: sqlite3.Connection, s: StudyRow) -> None:
             ",".join(sorted(set(s.modalities))),
         ),
     )
-    conn.commit()
 
 
 def upsert_series(conn: sqlite3.Connection, s: SeriesRow) -> None:
@@ -31,7 +30,6 @@ def upsert_series(conn: sqlite3.Connection, s: SeriesRow) -> None:
              series_desc=excluded.series_desc, series_number=excluded.series_number""",
         (s.series_uid, s.study_uid, s.modality, s.series_desc, s.series_number),
     )
-    conn.commit()
 
 
 def upsert_instance(conn: sqlite3.Connection, i: InstanceRow) -> None:
@@ -57,7 +55,6 @@ def upsert_instance(conn: sqlite3.Connection, i: InstanceRow) -> None:
             i.transfer_syntax,
         ),
     )
-    conn.commit()
 
 
 def update_series_finalized(
@@ -65,6 +62,7 @@ def update_series_finalized(
     series_uid: str,
     *,
     instance_count: int,
+    frame_count: int,
     thumb_sop_uid: str | None,
     sort_method: SortMethod,
     volume: VolumeInfo,
@@ -75,11 +73,12 @@ def update_series_finalized(
         volume.origin or (None,) * 3,
     )
     conn.execute(
-        """UPDATE series SET instance_count=?, thumb_sop_uid=?, sort_method=?, is_volume=?,
-           volume_reason=?, dim_x=?, dim_y=?, dim_z=?, spacing_x=?, spacing_y=?, spacing_z=?,
-           origin_x=?, origin_y=?, origin_z=?, direction=? WHERE series_uid=?""",
+        """UPDATE series SET instance_count=?, frame_count=?, thumb_sop_uid=?, sort_method=?,
+           is_volume=?, volume_reason=?, dim_x=?, dim_y=?, dim_z=?, spacing_x=?, spacing_y=?,
+           spacing_z=?, origin_x=?, origin_y=?, origin_z=?, direction=? WHERE series_uid=?""",
         (
             instance_count,
+            frame_count,
             thumb_sop_uid,
             sort_method,
             int(volume.is_volume),
@@ -97,7 +96,6 @@ def update_series_finalized(
             series_uid,
         ),
     )
-    conn.commit()
 
 
 def _study_from_row(r: sqlite3.Row) -> StudyRow:
@@ -142,6 +140,7 @@ def _series_from_row(r: sqlite3.Row) -> SeriesRow:
         r["thumb_sop_uid"],
         r["sort_method"],
         vol,
+        r["frame_count"] or 0,
     )
 
 
@@ -191,6 +190,17 @@ def _instance_from_row(r: sqlite3.Row) -> InstanceRow:
     )
 
 
+_LIKE_ESCAPE = "\\"
+
+
+def _escape_like(s: str) -> str:
+    """Escape SQLite LIKE metacharacters so user input can't inject wildcards."""
+    return (
+        s.replace(_LIKE_ESCAPE, _LIKE_ESCAPE * 2).replace("%", f"{_LIKE_ESCAPE}%")
+        .replace("_", f"{_LIKE_ESCAPE}_")
+    )
+
+
 def list_studies(
     conn: sqlite3.Connection,
     *,
@@ -203,8 +213,8 @@ def list_studies(
     where: list[str] = []
     args: list[Any] = []
     if patient_name:
-        where.append("LOWER(patient_name) LIKE ?")
-        args.append(f"%{patient_name.lower().strip('*')}%")
+        where.append(f"LOWER(patient_name) LIKE ? ESCAPE '{_LIKE_ESCAPE}'")
+        args.append(f"%{_escape_like(patient_name.lower().strip('*'))}%")
     if patient_id:
         where.append("patient_id = ?")
         args.append(patient_id)
