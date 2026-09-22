@@ -86,8 +86,10 @@ async def upload(files: list[UploadFile], conn: sqlite3.Connection = Depends(get
             else:
                 paths.append(p)
         # ingest_files does blocking disk + sqlite I/O; run it off the event loop.
-        # The sqlite3 connection was opened with check_same_thread=False (see
-        # app.db.connect), so handing it to the threadpool worker is safe.
+        # `conn` is a private, per-request connection (see
+        # app/dicomweb/deps.py::get_db) that nothing else holds a reference to,
+        # so handing it to the threadpool worker here is safe even though
+        # sqlite3.Connection objects aren't safe for *concurrent* use.
         summary = await run_in_threadpool(ingest_files, conn, paths, settings.store_dir)
         return {"accepted": summary.accepted, "skipped": [asdict(s) for s in summary.skipped],
                 "studyUids": summary.study_uids}

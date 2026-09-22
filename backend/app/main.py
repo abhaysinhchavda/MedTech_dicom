@@ -55,6 +55,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # (and its sqlite WAL file handles) don't leak until process exit. Closing
     # an already-closed sqlite3.Connection is a harmless no-op, so this never
     # conflicts with the lifespan's own close().
+    #
+    # This connection is used only here (single-threaded startup ingestion)
+    # and directly by tests that seed data out of band; request handlers never
+    # see it. app/dicomweb/deps.py::get_db opens its own private connection
+    # per request instead, because sqlite3.Connection objects aren't safe for
+    # concurrent use by multiple threads -- see that module for why.
     weakref.finalize(app, conn.close)
     app.add_middleware(
         CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["*"],

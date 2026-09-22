@@ -35,11 +35,22 @@ CREATE INDEX IF NOT EXISTS ix_instance_series ON instance(series_uid);
 
 
 def connect(db_path: Path) -> sqlite3.Connection:
+    # `check_same_thread=False` only disables sqlite3's same-thread *ownership*
+    # check -- it does not make a single Connection object safe for genuinely
+    # concurrent use by multiple threads at once. Callers must not share one
+    # Connection returned from here across concurrently-running threads (see
+    # app/dicomweb/deps.py::get_db, which opens one of these per request).
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    # WAL readers never block writers (and vice versa), but two writers still
+    # serialize on SQLite's own lock; with each request now opening its own
+    # connection, concurrent writes (e.g. overlapping /api/upload calls) would
+    # otherwise fail immediately with "database is locked" instead of waiting
+    # briefly for the other transaction to finish.
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
