@@ -83,8 +83,10 @@ def volume_info(rows: list[InstanceRow], method: SortMethod) -> VolumeInfo:
         for r in rows
     ):
         return VolumeInfo(False, "inconsistent image dimensions")
-    if not _same_orientation(rows):
-        return VolumeInfo(False, "mixed orientations")
+    # No "mixed orientations" check here: sort_instances only ever returns
+    # method == "geometry" when _same_orientation(rows) already holds, so by the
+    # time we get here (method == "geometry", checked above) orientations are
+    # guaranteed consistent -- that branch was dead code.
     if any(r.num_frames != 1 for r in rows):
         # multi-frame spacing not derivable here
         return VolumeInfo(False, "irregular slice spacing")

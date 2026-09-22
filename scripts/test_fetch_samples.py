@@ -9,9 +9,22 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from fetch_samples import transcode_to_j2k, verify_series  # noqa: E402
-
+from fetch_samples import _is_dicom_file, transcode_to_j2k, verify_series  # noqa: E402
 from tests.conftest import make_ct_series, write_series  # noqa: E402
+
+
+def test_is_dicom_file(tmp_path: Path) -> None:
+    # A real (but non-`.dcm`-suffixed) archive member with no DICM magic must
+    # not be mistaken for a DICOM instance.
+    license_file = tmp_path / "LICENSE"
+    license_file.write_text("MIT License\n")
+    assert _is_dicom_file(license_file) is False
+
+    # Some TCIA collections ship extensionless instances: 128-byte preamble
+    # followed by the "DICM" magic at byte 128.
+    extensionless = tmp_path / "IM000001"
+    extensionless.write_bytes(b"\x00" * 128 + b"DICM")
+    assert _is_dicom_file(extensionless) is True
 
 
 def test_verify_series_ok_and_mismatch(tmp_path: Path) -> None:

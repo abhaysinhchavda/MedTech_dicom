@@ -10,6 +10,7 @@ bypassing the lifespan startup/shutdown hooks entirely.
 from __future__ import annotations
 
 import logging
+import weakref
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -45,6 +46,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     conn = connect(settings.db_path)
     init_schema(conn)
     app.state.db = conn
+    # The connection above is opened eagerly (not inside `lifespan`) so that
+    # app.state.db is available to callers -- notably tests -- that build an
+    # app via create_app() but never run it through the ASGI lifespan (that
+    # only happens with `with TestClient(...) as c:`, not a bare TestClient()).
+    # `lifespan`'s shutdown closes it for apps that ARE run as ASGI; this
+    # finalizer is the backstop for the ones that aren't, so the connection
+    # (and its sqlite WAL file handles) don't leak until process exit. Closing
+    # an already-closed sqlite3.Connection is a harmless no-op, so this never
+    # conflicts with the lifespan's own close().
+    weakref.finalize(app, conn.close)
     app.add_middleware(
         CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["*"],
         allow_headers=["*"], expose_headers=["X-Sort-Method", "Content-Length"],

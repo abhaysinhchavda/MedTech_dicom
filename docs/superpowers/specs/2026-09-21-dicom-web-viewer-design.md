@@ -209,7 +209,11 @@ human-readable `reason`, first failure wins):
 | ≥ 3 instances (after multi-frame expansion) | `"fewer than 3 slices"` |
 | all `rows`, `cols`, `bits_allocated`, `pixel_representation`, `pixel_spacing` identical | `"inconsistent image dimensions"` |
 | consecutive `key` gaps all within 1 % of the median gap (tolerance also catches duplicates, gap = 0) | `"irregular slice spacing"` |
-| all IOP vectors equal within 1e-4 | `"mixed orientations"` |
+
+Mixed orientations never reach a dedicated check here: `sort_instances` only
+returns `method == "geometry"` when all IOP vectors already agree within
+1e-4, so a series with inconsistent orientations surfaces as
+`"missing or inconsistent orientation"` (the first check above) instead.
 
 `spacing_z` is the median gap (not `SliceThickness`, which is unreliable);
 `origin` is the first sorted instance's IPP; `direction` is
