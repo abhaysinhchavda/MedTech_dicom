@@ -22,9 +22,14 @@ def _url(d, sop=None):
 
 
 def test_metadata_is_sorted_full_headers_without_pixels(client, tmp_path: Path) -> None:
-    d = _seed(client, tmp_path, 5)
-    d_reversed = list(reversed(d))  # write order != anatomical order
-    write_series(d_reversed, tmp_path / "in2")
+    # Instance 0 has the smallest z (anatomically first); write it under the
+    # *largest* filename (img0004.dcm) and instance 4 under the smallest
+    # (img0000.dcm), so filename order is the exact opposite of z order. If the
+    # endpoint fell back to sorting by filename instead of geometry, this test
+    # would catch it: the returned z sequence would come back descending.
+    d = make_ct_series(5)
+    write_series(list(reversed(d)), tmp_path / "in")
+    ingest_directory(client.app.state.db, tmp_path / "in", client.app.state.settings.store_dir)
     r = client.get(_url(d) + "/metadata")
     assert r.status_code == 200 and r.headers["content-type"].startswith("application/dicom+json")
     assert r.headers["x-sort-method"] == "geometry"
@@ -77,6 +82,26 @@ def test_rendered_png_thumbnail(client, tmp_path: Path) -> None:
     assert r.status_code == 200 and r.headers["content-type"] == "image/png"
     img = Image.open(io.BytesIO(r.content))
     assert img.size == (8, 8) and img.mode == "L"
+
+
+def test_rendered_viewport_zero_rejected(client, tmp_path: Path) -> None:
+    d = _seed(client, tmp_path, 1)
+    r = client.get(_url(d, d[0].SOPInstanceUID) + "/rendered", params={"viewport": "0,0"})
+    assert r.status_code == 422
+
+
+def test_rendered_viewport_too_large_rejected(client, tmp_path: Path) -> None:
+    d = _seed(client, tmp_path, 1)
+    r = client.get(_url(d, d[0].SOPInstanceUID) + "/rendered", params={"viewport": "20000,20000"})
+    assert r.status_code == 422
+
+
+def test_rendered_preserves_aspect_ratio(client, tmp_path: Path) -> None:
+    d = _seed(client, tmp_path, 1, rows=16, cols=32)
+    r = client.get(_url(d, d[0].SOPInstanceUID) + "/rendered", params={"viewport": "64,64"})
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+    img = Image.open(io.BytesIO(r.content))
+    assert img.size == (64, 32)  # 32x16 source contained in a 64x64 box, aspect preserved
 
 
 def test_multiframe_frames_and_rendered(client, tmp_path: Path) -> None:

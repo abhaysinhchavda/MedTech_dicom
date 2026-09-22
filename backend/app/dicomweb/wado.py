@@ -8,7 +8,7 @@ import numpy as np
 import pydicom
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import JSONResponse
-from PIL import Image
+from PIL import Image, ImageOps
 from pydicom.multival import MultiValue
 from pydicom.uid import ExplicitVRLittleEndian
 
@@ -21,6 +21,7 @@ from app.models import InstanceRow, SeriesRow, SortMethod
 
 router = APIRouter(prefix="/dicomweb", tags=["wado"])
 FRAME_CACHE = "public, max-age=86400"
+MAX_VIEWPORT_DIM = 1024
 
 
 def load_sorted_series(
@@ -110,7 +111,9 @@ def instance_rendered(
     study_uid: str,
     series_uid: str,
     sop_uid: str,
-    viewport: str = Query("128,128", pattern=r"^\d+,\d+$"),
+    # 1-9999 per dimension, no zero (a "0,0" viewport used to reach PIL.resize
+    # and raise ValueError -> 500; now it's a 422 before the handler even runs).
+    viewport: str = Query("128,128", pattern=r"^[1-9]\d{0,3},[1-9]\d{0,3}$"),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> Response:
     i = _instance_or_404(conn, study_uid, series_uid, sop_uid)
@@ -119,8 +122,10 @@ def instance_rendered(
     if arr.ndim == 3 and i.num_frames > 1:
         arr = arr[i.num_frames // 2]
     img = Image.fromarray(_window(ds, arr), mode="L")
-    w, h = (int(v) for v in viewport.split(","))
-    img = img.resize((w, h), Image.Resampling.BILINEAR)
+    # Clamp defense-in-depth: the regex already caps each dimension at 4 digits
+    # (<=9999), but we still bound the actual allocation to MAX_VIEWPORT_DIM.
+    w, h = (min(int(v), MAX_VIEWPORT_DIM) for v in viewport.split(","))
+    img = ImageOps.contain(img, (w, h))
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return Response(buf.getvalue(), media_type="image/png", headers={"Cache-Control": FRAME_CACHE})
