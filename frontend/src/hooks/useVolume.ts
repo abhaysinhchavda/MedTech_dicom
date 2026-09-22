@@ -34,13 +34,27 @@ export function useVolume(studyUid: string, seriesUid: string): VolumeState {
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [load, setLoad] = useState<LoadState>({ status: 'idle' });
   const volumeId = volumeIdFor(seriesUid);
-  const started = useRef(false);
+  // Which series the current load attempt belongs to, rather than a plain
+  // boolean. A boolean latch that's never cleared blocks every future load:
+  // switching seriesUid while mounted would never start the new series, and
+  // in StrictMode's dev mount->cleanup->remount cycle the teardown effect
+  // (below) aborts the first attempt before the second (real) effect run
+  // sees a clear latch, so the hook gets stuck at 'loading' forever. Keying
+  // by seriesUid -- and clearing it in the teardown cleanup -- lets a fresh
+  // attempt start whenever this series' in-flight/loaded resource is torn
+  // down, whether that's a StrictMode remount of the same series, a real
+  // series change, or an actual unmount.
+  const startedRef = useRef<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const info = infoQ.data;
-    if (!canLoad || !info || !metaQ.data || started.current) return;
-    started.current = true;
+    if (!canLoad || !info || !metaQ.data || startedRef.current === seriesUid) return;
+    startedRef.current = seriesUid;
+    // Clear any stale progress/error left over from a previous series (or a
+    // previous, torn-down attempt at this same series) before starting.
+    setProgress({ done: 0, total: 0 });
+    setLoad({ status: 'idle' });
     const bytes = info.estimatedBytes ?? 0;
     if (
       bytes > GB &&
@@ -70,15 +84,20 @@ export function useVolume(studyUid: string, seriesUid: string): VolumeState {
   }, [canLoad, infoQ.data, metaQ.data, studyUid, seriesUid, volumeId]);
 
   // Single teardown point: abort any in-flight load and release the cached
-  // volume together, whether the component unmounts or seriesUid changes.
+  // volume for the render it was created in, whether the component unmounts,
+  // seriesUid changes, or (dev-only) StrictMode tears down the first of its
+  // two mount passes. Clearing startedRef here -- not just re-keying it --
+  // is what lets the following setup start a fresh attempt instead of being
+  // latched out.
   useEffect(
     () => () => {
-      if (started.current) {
+      if (startedRef.current === seriesUid) {
         controllerRef.current?.abort();
         releaseVolume(volumeId);
+        startedRef.current = null;
       }
     },
-    [volumeId],
+    [volumeId, seriesUid],
   );
 
   const info = infoQ.data ?? null;

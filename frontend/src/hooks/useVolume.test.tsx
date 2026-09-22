@@ -1,8 +1,11 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { render, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { http, HttpResponse } from 'msw';
+import { StrictMode } from 'react';
 import { vi } from 'vitest';
-import { API, SERIES, STUDY, server, volumeInfoJson } from '../test/msw';
+import { API, SERIES, STUDY, instanceJson, server, volumeInfoJson } from '../test/msw';
+
+const SERIES2 = '1.2.3.5';
 
 // vi.mock factories are hoisted above this file's own top-level declarations,
 // so the mocks they close over must be created inside vi.hoisted (see the
@@ -26,13 +29,42 @@ vi.mock('../cornerstone/imageIds', () => ({
     inst.map((i) => `wadors:${i.sopUid}`),
   seedMetadata: vi.fn(),
 }));
-import { useVolume } from './useVolume';
+import { useVolume, type VolumeState } from './useVolume';
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
   <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
     {children}
   </QueryClientProvider>
 );
+
+// A loadVolume stand-in that actually honors the AbortSignal the way the real
+// src/cornerstone/volume.ts implementation does: it stays pending until
+// either aborted (rejects with AbortError) or a microtask later (resolves).
+// The plain default mock above ignores the signal entirely, which can't
+// exercise abort-driven behavior -- StrictMode's synthetic unmount fires
+// before any microtask runs, so only a signal-aware mock can be caught
+// mid-flight by it.
+const signalAwareLoadVolume = (
+  id: string,
+  ids: string[],
+  onProgress?: (d: number, t: number) => void,
+  signal?: AbortSignal,
+) =>
+  new Promise<{ volumeId: string }>((resolve, reject) => {
+    const onAbort = () =>
+      reject(Object.assign(new Error('Volume load aborted'), { name: 'AbortError' }));
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener('abort', onAbort);
+    queueMicrotask(() => {
+      signal?.removeEventListener('abort', onAbort);
+      if (signal?.aborted) return;
+      onProgress?.(ids.length, ids.length);
+      resolve({ volumeId: id });
+    });
+  });
 
 beforeEach(() => {
   loadVolume.mockClear();
@@ -115,4 +147,97 @@ test('unmounting mid-load aborts the controller and does not surface as an error
   // than surfacing as an unhandled rejection or a post-unmount error state.
   await Promise.resolve();
   await Promise.resolve();
+});
+
+test('inside StrictMode, the dev mount→cleanup→remount cycle still reaches ready', async () => {
+  // React 18/19 StrictMode (dev only) mounts, immediately tears down, then
+  // remounts -- but only on the very first COMMIT where a component's
+  // effects do real work; it never double-invokes a later update commit.
+  // useVolume's loading effect is a no-op until infoQ/metaQ have data, so
+  // with an empty cache that "real" commit is an update, not the mount, and
+  // StrictMode would never touch it -- pre-seeding the QueryClient makes
+  // that data available synchronously, so the real work lands on the mount
+  // commit and is actually double-invoked (verified empirically: without
+  // pre-seeding, this test passes even against the pre-fix code, i.e. it
+  // wasn't exercising the bug at all).
+  //
+  // Also note: renderHook's own TestComponent captures its result via a
+  // dependency-less useEffect, which -- empirically, in this React/RTL/jsdom
+  // combination -- stops React's StrictMode double-invoke pass from reaching
+  // descendant effects entirely (plain `render` does reproduce the real
+  // mount->cleanup->remount cycle; `renderHook` does not). So this uses
+  // `render` with a probe component that captures state during render
+  // (no extra effect) rather than `renderHook`.
+  //
+  // The first (synthetic) teardown aborts this hook's in-flight load; the
+  // fix must let the second (real) mount start a fresh attempt rather than
+  // being latched out by a stale "already started" guard.
+  loadVolume
+    .mockImplementationOnce(signalAwareLoadVolume)
+    .mockImplementationOnce(signalAwareLoadVolume);
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(['volume-info', SERIES], volumeInfoJson);
+  qc.setQueryData(['metadata', STUDY, SERIES], {
+    instances: [
+      { sopUid: '1.1', numFrames: 1, raw: {} },
+      { sopUid: '1.2', numFrames: 1, raw: {} },
+      { sopUid: '1.3', numFrames: 1, raw: {} },
+      { sopUid: '1.4', numFrames: 1, raw: {} },
+    ],
+    sortMethod: 'geometry',
+  });
+  const captured: { current: VolumeState | null } = { current: null };
+  function Probe() {
+    // Deliberately capturing during render (not in a useEffect, as
+    // renderHook itself does) is what makes this test able to observe
+    // StrictMode's double-invoke of useVolume's effects at all -- see the
+    // comment above. oxlint's react(immutability) warning on this line is
+    // expected and accepted for that reason.
+    captured.current = useVolume(STUDY, SERIES);
+    return null;
+  }
+  render(
+    <StrictMode>
+      <QueryClientProvider client={qc}>
+        <Probe />
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+  await waitFor(() => expect(captured.current?.status).toBe('ready'));
+  expect(captured.current?.volumeId).toBe(`vol:${SERIES}`);
+  expect(captured.current?.error).toBeNull();
+  expect(loadVolume).toHaveBeenCalledTimes(2);
+});
+
+test('changing seriesUid on a mounted hook loads the new series', async () => {
+  server.use(
+    http.get(`${API}/api/series/${SERIES2}/volume-info`, () =>
+      HttpResponse.json({ ...volumeInfoJson, seriesUid: SERIES2 }),
+    ),
+    http.get(`${API}/dicomweb/studies/${STUDY}/series/${SERIES2}/metadata`, () =>
+      HttpResponse.json([instanceJson('2.1', 0), instanceJson('2.2', 1)], {
+        headers: { 'X-Sort-Method': 'geometry' },
+      }),
+    ),
+  );
+  const { result, rerender } = renderHook(
+    ({ seriesUid }: { seriesUid: string }) => useVolume(STUDY, seriesUid),
+    { wrapper, initialProps: { seriesUid: SERIES } },
+  );
+  await waitFor(() => expect(result.current.status).toBe('ready'));
+  expect(result.current.volumeId).toBe(`vol:${SERIES}`);
+  expect(loadVolume).toHaveBeenCalledTimes(1);
+
+  rerender({ seriesUid: SERIES2 });
+
+  await waitFor(() => expect(result.current.status).toBe('ready'));
+  expect(result.current.volumeId).toBe(`vol:${SERIES2}`);
+  expect(loadVolume).toHaveBeenCalledTimes(2);
+  expect(loadVolume).toHaveBeenNthCalledWith(
+    2,
+    `vol:${SERIES2}`,
+    ['wadors:2.1', 'wadors:2.2'],
+    expect.any(Function),
+    expect.any(AbortSignal),
+  );
 });
