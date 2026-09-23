@@ -33,6 +33,14 @@ export function ViewportOverlay({
           {wl}
         </div>
       )}
+      {!is3d && (
+        <div
+          className="absolute top-1 right-2 text-xs text-neutral-300 pointer-events-none"
+          data-testid={`zoom-${label}`}
+        >
+          {`${state.zoom.toFixed(2)}x`}
+        </div>
+      )}
     </>
   );
 }

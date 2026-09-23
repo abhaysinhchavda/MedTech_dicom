@@ -15,7 +15,12 @@ export const ViewportPanel = forwardRef<HTMLDivElement, ViewportPanelProps>(func
   { engineId, viewportId, label, ready, is3d, onMaximize },
   ref,
 ) {
-  const state = useViewportState(engineId, viewportId, ready);
+  // The 3D volume viewport has no slice/VOI/zoom overlay (see ViewportOverlay
+  // below), so it doesn't need to subscribe to viewport state -- and
+  // readSlice() (utilities.getImageSliceDataForVolumeViewport) throws on a
+  // VOLUME_3D viewport on every rotation frame's CAMERA_MODIFIED, since that
+  // util only supports MPR-style volume viewports.
+  const state = useViewportState(engineId, viewportId, ready && !is3d);
   return (
     <div
       className="relative bg-black border border-neutral-800 min-h-0"

@@ -54,12 +54,7 @@ export async function showVolume(
 }
 
 export function destroyViewerLayout(engine: RenderingEngine): void {
-  for (const id of ALL_IDS) {
-    try {
-      engine.disableElement(id);
-    } catch {
-      /* already disabled */
-    }
-  }
+  // engine.destroy() already disables every element on the engine; looping
+  // disableElement() first was redundant.
   engine.destroy();
 }
