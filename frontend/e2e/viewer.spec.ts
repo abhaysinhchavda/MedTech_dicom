@@ -10,7 +10,9 @@ import { expect, test, type Page } from '@playwright/test';
 // against a same-sized blank canvas instead of reading pixels directly.
 async function canvasIsNonBlack(page: Page, panel: string): Promise<boolean> {
   return page.evaluate((label) => {
-    const c = document.querySelector(`[data-testid="panel-${label}"] canvas`) as HTMLCanvasElement | null;
+    const c = document.querySelector(
+      `[data-testid="panel-${label}"] canvas`,
+    ) as HTMLCanvasElement | null;
     if (!c) return false;
     const blank = document.createElement('canvas');
     blank.width = c.width;

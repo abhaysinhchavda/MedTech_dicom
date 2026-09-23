@@ -5,8 +5,10 @@ import { join } from 'node:path';
 
 const tmp = mkdtempSync(join(tmpdir(), 'dicom-e2e-'));
 const env = {
-  SAMPLES_DIR: join(tmp, 'samples'), STORE_DIR: join(tmp, 'store'),
-  DB_PATH: join(tmp, 'store', 'index.sqlite'), CORS_ORIGINS: 'http://localhost:5173',
+  SAMPLES_DIR: join(tmp, 'samples'),
+  STORE_DIR: join(tmp, 'store'),
+  DB_PATH: join(tmp, 'store', 'index.sqlite'),
+  CORS_ORIGINS: 'http://localhost:5173',
 };
 // frontend/package.json sets "type": "module", so this config loads as an ES
 // module under Node -- __dirname isn't defined there. import.meta.dirname
@@ -18,7 +20,14 @@ export default defineConfig({
   timeout: 120_000,
   use: {
     baseURL: 'http://localhost:5173',
-    launchOptions: { args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] },
+    launchOptions: {
+      args: [
+        '--use-gl=angle',
+        '--use-angle=swiftshader',
+        '--enable-unsafe-swiftshader',
+        '--ignore-gpu-blocklist',
+      ],
+    },
   },
   webServer: [
     {
