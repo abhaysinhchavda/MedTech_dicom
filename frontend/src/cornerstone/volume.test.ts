@@ -53,11 +53,16 @@ test('resolves on completion and reports progress only for its own volume', asyn
   expect(progress).not.toHaveBeenCalledWith(9, 9);
 });
 
-test('rejects after a repeated load error for one of its images', async () => {
-  const p = loadVolume(volumeIdFor('T'), ['wadors:x']);
-  fire('LE', { imageId: 'wadors:x', error: new Error('404') });
-  fire('LE', { imageId: 'wadors:x', error: new Error('404') });
-  await expect(p).rejects.toThrow(/wadors:x/);
+test('rejects on the first load error, naming the failed slice', async () => {
+  // Real event shape (an upstream Cornerstone arg-order bug): detail.imageId
+  // is the numeric imageIdIndex, not a wadors: string -- see the comment on
+  // ErrDetail in volume.ts. A mock shaped like { imageId: 'wadors:x' } would
+  // hide the bug this test exists to catch.
+  removeVolumeLoadObject.mockClear();
+  const p = loadVolume(volumeIdFor('T'), ['wadors:x', 'wadors:y']);
+  fire('LE', { imageId: 1, error: new Error('404') });
+  await expect(p).rejects.toThrow(/wadors:y/);
+  expect(removeVolumeLoadObject).toHaveBeenCalledWith(volumeIdFor('T'));
 });
 
 test('releaseVolume removes from cache', () => {

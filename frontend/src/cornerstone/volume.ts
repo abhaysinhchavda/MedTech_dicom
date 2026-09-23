@@ -5,7 +5,12 @@ export const volumeIdFor = (seriesUid: string): string =>
 
 type ModDetail = { volumeId: string; framesProcessed: number; numberOfFrames: number };
 type DoneDetail = { volumeId: string };
-type ErrDetail = { imageId: string; error?: Error };
+// Cornerstone's BaseStreamingImageVolume has an upstream arg-order bug: its
+// errorCallback is declared (imageId, permanent, error) but bound and invoked
+// as errorCallback(imageIdIndex, imageId, error, ...) via
+// ProgressiveIterator.forEach's errorCallback(e, true). So the event detail's
+// `imageId` field actually holds the numeric imageIdIndex, not a wadors: id.
+type ErrDetail = { imageId: number; error?: Error };
 
 function abortError(): Error {
   return typeof DOMException !== 'undefined'
@@ -25,8 +30,6 @@ export function loadVolume(
       return;
     }
 
-    const ids = new Set(imageIds);
-    const failedOnce = new Set<string>();
     let volume: Types.IImageVolume | undefined;
     let settled = false;
 
@@ -46,16 +49,18 @@ export function loadVolume(
       off();
       resolve(volume!);
     };
+    // Only one volume loads at a time (this promise is created per loadVolume
+    // call and nothing else shares its imageIds), so this needs no volumeId
+    // filtering the way onMod/onDone do -- any IMAGE_LOAD_ERROR fired while
+    // we're listening is ours.
     const onErr = (e: Event) => {
-      const d = (e as CustomEvent<ErrDetail>).detail;
-      if (!ids.has(d.imageId)) return;
-      if (!failedOnce.has(d.imageId)) {
-        failedOnce.add(d.imageId);
-        return; // the loader retries once
-      }
+      if (settled) return;
       settled = true;
       off();
-      reject(new Error(`slice failed to load: ${d.imageId} (${d.error?.message ?? 'error'})`));
+      releaseVolume(volumeId);
+      const d = (e as CustomEvent<ErrDetail>).detail;
+      const slice = imageIds[d.imageId] ?? d.imageId;
+      reject(new Error(`slice failed to load: ${slice} (${d.error?.message ?? 'error'})`));
     };
     const onAbort = () => {
       if (settled) return;
