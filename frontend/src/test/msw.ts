@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
+import { expect } from 'vitest';
 
 export const API = 'http://localhost:8001';
 export const STUDY = '1.2.3';
@@ -59,12 +60,20 @@ export const handlers = [
     ),
   ),
   http.get(`${API}/api/series/${SERIES}/volume-info`, () => HttpResponse.json(volumeInfoJson)),
-  http.post(`${API}/api/upload`, () =>
-    HttpResponse.json({
-      accepted: 2,
-      skipped: [{ file: 'notes.txt', reason: 'not a DICOM file' }],
-      studyUids: [STUDY],
-    }),
-  ),
+  // Actually reads the multipart body instead of returning a fixed payload,
+  // so a broken FormData/File serialization (the jsdom bug vitest.setup.ts
+  // works around by swapping in undici) fails this handler's own assertions
+  // rather than going unnoticed.
+  http.post(`${API}/api/upload`, async ({ request }) => {
+    const fd = await request.formData();
+    const files = fd.getAll('files');
+    expect(files.length).toBeGreaterThan(0);
+    for (const f of files) expect(f).toBeInstanceOf(File);
+    const names = (files as File[]).map((f) => f.name);
+    const skipped = names
+      .filter((n) => !n.endsWith('.dcm'))
+      .map((file) => ({ file, reason: 'not a DICOM file' }));
+    return HttpResponse.json({ accepted: names.length, skipped, studyUids: [STUDY] });
+  }),
 ];
 export const server = setupServer(...handlers);

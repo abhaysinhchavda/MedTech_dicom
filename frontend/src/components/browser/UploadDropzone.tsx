@@ -3,6 +3,48 @@ import { uploadFiles } from '../../api/upload';
 import type { UploadSummary } from '../../api/types';
 import { Spinner } from '../ui/Spinner';
 
+// A dropped directory entry, per item, has no `webkitGetAsEntry` result in
+// some browsers -- guard for that instead of assuming DataTransferItem always
+// resolves to a FileSystemEntry.
+type FSEntry = {
+  isFile: boolean;
+  isDirectory: boolean;
+  file: (cb: (f: File) => void) => void;
+  createReader: () => { readEntries: (cb: (entries: FSEntry[]) => void) => void };
+};
+
+function readAllEntries(reader: ReturnType<FSEntry['createReader']>): Promise<FSEntry[]> {
+  return new Promise((resolve) => reader.readEntries(resolve));
+}
+
+async function walkEntry(entry: FSEntry, out: File[]): Promise<void> {
+  if (entry.isFile) {
+    await new Promise<void>((resolve) => entry.file((f) => (out.push(f), resolve())));
+    return;
+  }
+  if (entry.isDirectory) {
+    const reader = entry.createReader();
+    // readEntries returns a page at a time; keep reading until it's empty.
+    let batch = await readAllEntries(reader);
+    while (batch.length) {
+      await Promise.all(batch.map((e) => walkEntry(e, out)));
+      batch = await readAllEntries(reader);
+    }
+  }
+}
+
+async function filesFromDataTransfer(dt: DataTransfer): Promise<File[]> {
+  const items = dt.items;
+  if (!items || !items[0]?.webkitGetAsEntry) return Array.from(dt.files);
+  const entries = Array.from(items)
+    .map((it) => it.webkitGetAsEntry() as FSEntry | null)
+    .filter((e): e is FSEntry => e !== null);
+  if (!entries.length) return Array.from(dt.files);
+  const out: File[] = [];
+  await Promise.all(entries.map((e) => walkEntry(e, out)));
+  return out;
+}
+
 export function UploadDropzone({ onDone }: { onDone: (s: UploadSummary) => void }) {
   const [busy, setBusy] = useState(false);
   const [summary, setSummary] = useState<UploadSummary | null>(null);
@@ -24,7 +66,18 @@ export function UploadDropzone({ onDone }: { onDone: (s: UploadSummary) => void 
   }
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    void send(Array.from(e.dataTransfer.files));
+    const dt = e.dataTransfer;
+    void filesFromDataTransfer(dt).then(send);
+  };
+  const onPick = (input: HTMLInputElement) => {
+    const files = Array.from(input.files ?? []);
+    void (async () => {
+      try {
+        await send(files);
+      } finally {
+        input.value = '';
+      }
+    })();
   };
 
   return (
@@ -41,17 +94,23 @@ export function UploadDropzone({ onDone }: { onDone: (s: UploadSummary) => void 
           multiple
           className="hidden"
           aria-label="choose files"
-          onChange={(e) => {
-            const input = e.target;
-            const files = Array.from(input.files ?? []);
-            void (async () => {
-              try {
-                await send(files);
-              } finally {
-                input.value = '';
-              }
-            })();
-          }}
+          onChange={(e) => onPick(e.target)}
+        />
+      </label>
+      {' / '}
+      <label className="underline cursor-pointer">
+        choose a folder
+        <input
+          type="file"
+          multiple
+          // webkitdirectory is non-standard but supported by every browser
+          // that also supports webkitGetAsEntry (Chrome, Firefox, Safari,
+          // Edge); there's no standards-track equivalent.
+          // @ts-expect-error -- not in the DOM lib's InputHTMLAttributes
+          webkitdirectory=""
+          className="hidden"
+          aria-label="choose a folder"
+          onChange={(e) => onPick(e.target)}
         />
       </label>
       {busy && (
