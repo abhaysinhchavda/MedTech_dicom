@@ -36,6 +36,13 @@ export function StudyList({
           <tr
             key={s.studyUid}
             onClick={() => onSelect(s.studyUid)}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onSelect(s.studyUid);
+              }
+            }}
             className={`cursor-pointer hover:bg-neutral-800 ${selected === s.studyUid ? 'bg-neutral-800' : ''}`}
           >
             <td className="p-2">{s.patientName || '—'}</td>
