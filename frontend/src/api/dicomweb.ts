@@ -1,6 +1,6 @@
 import { apiFetch, apiFetchWithHeaders, apiUrl } from './client';
 import { num, pn, str, strs } from './dicomJson';
-import type { DicomJson, Series, SeriesMetadata, Study } from './types';
+import type { DicomJson, InstanceSummary, Series, SeriesMetadata, Study } from './types';
 
 export async function getStudies(): Promise<Study[]> {
   const rows = await apiFetch<DicomJson[]>('/dicomweb/studies');
@@ -27,6 +27,21 @@ export async function getSeries(studyUid: string): Promise<Series[]> {
     numInstances: num(j, '00201209') ?? 0,
     thumbSopUid: str(j, '00080018') || undefined,
   }));
+}
+
+// QIDO returns instances in storage order; the hover preview needs them in
+// acquisition order, and InstanceNumber is the only ordering key the instance
+// search result carries.
+export async function getInstances(
+  studyUid: string,
+  seriesUid: string,
+): Promise<InstanceSummary[]> {
+  const rows = await apiFetch<DicomJson[]>(
+    `/dicomweb/studies/${studyUid}/series/${seriesUid}/instances`,
+  );
+  return rows
+    .map((j) => ({ sopUid: str(j, '00080018'), instanceNumber: num(j, '00200013') }))
+    .sort((a, b) => (a.instanceNumber ?? 0) - (b.instanceNumber ?? 0));
 }
 
 export async function getSeriesMetadata(

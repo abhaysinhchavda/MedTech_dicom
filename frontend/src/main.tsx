@@ -14,9 +14,13 @@ initCornerstone().then(
     ),
   (e: Error) =>
     root.render(
-      <div className="p-8 text-center">
-        <h1 className="text-xl">WebGL2 required</h1>
-        <p className="text-neutral-400">{e.message}</p>
+      <div className="mx-auto max-w-md p-12 text-center">
+        <h1 className="text-xl font-semibold tracking-tight">WebGL2 required</h1>
+        <p className="mt-2 text-sm text-muted">
+          This viewer renders the volume on the GPU, and this browser did not provide a WebGL2
+          context.
+        </p>
+        <p className="mt-4 text-xs text-faint">{e.message}</p>
       </div>,
     ),
 );

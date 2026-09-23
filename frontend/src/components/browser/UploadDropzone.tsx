@@ -1,6 +1,8 @@
-import { useState, type DragEvent } from 'react';
+import { useRef, useState, type DragEvent } from 'react';
+import { CheckCircle, UploadSimple, Warning } from '@phosphor-icons/react';
 import { uploadFiles } from '../../api/upload';
 import type { UploadSummary } from '../../api/types';
+import { Button } from '../ui/Button';
 import { Spinner } from '../ui/Spinner';
 
 // A dropped directory entry, per item, has no `webkitGetAsEntry` result in
@@ -47,8 +49,11 @@ async function filesFromDataTransfer(dt: DataTransfer): Promise<File[]> {
 
 export function UploadDropzone({ onDone }: { onDone: (s: UploadSummary) => void }) {
   const [busy, setBusy] = useState(false);
+  const [over, setOver] = useState(false);
   const [summary, setSummary] = useState<UploadSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const dirInput = useRef<HTMLInputElement>(null);
 
   async function send(files: File[]) {
     if (!files.length) return;
@@ -66,6 +71,7 @@ export function UploadDropzone({ onDone }: { onDone: (s: UploadSummary) => void 
   }
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    setOver(false);
     const dt = e.dataTransfer;
     void filesFromDataTransfer(dt).then(send);
   };
@@ -82,60 +88,82 @@ export function UploadDropzone({ onDone }: { onDone: (s: UploadSummary) => void 
 
   return (
     <div
-      onDragOver={(e) => e.preventDefault()}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
       onDrop={onDrop}
-      className="m-4 rounded border-2 border-dashed border-neutral-700 p-6 text-center text-neutral-400"
+      className={`flex flex-col items-center gap-3 rounded-surface border-2 border-dashed p-6 text-center transition-colors duration-150 ${
+        over ? 'border-accent bg-accent/5' : 'border-line bg-surface/60'
+      }`}
     >
-      <p>Drop a folder of DICOM files or a .zip here, or</p>
-      <label className="underline cursor-pointer">
-        choose files
-        <input
-          type="file"
-          multiple
-          className="hidden"
-          aria-label="choose files"
-          onChange={(e) => onPick(e.target)}
-        />
-      </label>
-      {' / '}
-      <label className="underline cursor-pointer">
-        choose a folder
-        <input
-          type="file"
-          multiple
-          // webkitdirectory is non-standard but supported by every browser
-          // that also supports webkitGetAsEntry (Chrome, Firefox, Safari,
-          // Edge); there's no standards-track equivalent.
-          // @ts-expect-error -- not in the DOM lib's InputHTMLAttributes
-          webkitdirectory=""
-          className="hidden"
-          aria-label="choose a folder"
-          onChange={(e) => onPick(e.target)}
-        />
-      </label>
+      <UploadSimple
+        aria-hidden
+        size={26}
+        className={over ? 'text-accent' : 'text-faint'}
+        weight="duotone"
+      />
+      <p className="text-sm text-muted">Drop a folder of DICOM files or a .zip here</p>
+
+      <div className="flex gap-2">
+        <Button variant="quiet" disabled={busy} onClick={() => fileInput.current?.click()}>
+          choose files
+        </Button>
+        <Button variant="quiet" disabled={busy} onClick={() => dirInput.current?.click()}>
+          choose a folder
+        </Button>
+      </div>
+      <input
+        ref={fileInput}
+        type="file"
+        multiple
+        className="hidden"
+        aria-label="choose files"
+        onChange={(e) => onPick(e.target)}
+      />
+      <input
+        ref={dirInput}
+        type="file"
+        multiple
+        // webkitdirectory is non-standard but supported by every browser
+        // that also supports webkitGetAsEntry (Chrome, Firefox, Safari,
+        // Edge); there's no standards-track equivalent.
+        // @ts-expect-error -- not in the DOM lib's InputHTMLAttributes
+        webkitdirectory=""
+        className="hidden"
+        aria-label="choose a folder"
+        onChange={(e) => onPick(e.target)}
+      />
+
       {busy && (
-        <div className="mt-3 flex justify-center">
+        <div className="flex items-center gap-2 text-sm text-muted">
           <Spinner />
+          Indexing
         </div>
       )}
       {error && (
-        <p role="alert" className="mt-3 text-red-400">
+        <p role="alert" className="flex items-center gap-2 text-sm text-danger">
+          <Warning aria-hidden size={15} />
           {error}
         </p>
       )}
       {summary && (
-        <div className="mt-3 text-left text-sm">
-          <p className="text-neutral-200">
+        <div className="w-full text-left">
+          <p className="flex items-center gap-2 text-sm text-ink">
+            <CheckCircle aria-hidden size={15} className="text-accent" />
             {summary.accepted} files accepted
             {summary.skipped.length ? `, ${summary.skipped.length} skipped` : ''}
           </p>
-          <ul className="text-amber-400">
-            {summary.skipped.map((s) => (
-              <li key={s.file}>
-                {s.file}: {s.reason}
-              </li>
-            ))}
-          </ul>
+          {summary.skipped.length > 0 && (
+            <ul className="mt-2 max-h-40 space-y-1 overflow-auto text-xs text-warn">
+              {summary.skipped.map((s) => (
+                <li key={s.file} className="truncate">
+                  {s.file}: {s.reason}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </div>

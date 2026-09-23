@@ -23,6 +23,10 @@ export interface InstanceMeta {
   numFrames: number;
   raw: DicomJson;
 }
+export interface InstanceSummary {
+  sopUid: string;
+  instanceNumber: number | null;
+}
 export interface SeriesMetadata {
   instances: InstanceMeta[];
   sortMethod: string;

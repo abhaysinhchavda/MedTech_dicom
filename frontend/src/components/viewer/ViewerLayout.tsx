@@ -154,6 +154,45 @@ export function ViewerLayout({
     engine()?.render();
   };
 
+  // Keyboard control of the whole viewer. The deps below are the complete
+  // set of component state the handlers read; everything else they touch
+  // (the rendering engine, the tool groups) is looked up from Cornerstone's
+  // global registries at call time, not captured.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(t.tagName))) return;
+      const panels: Record<string, ViewportKey> = {
+        '1': 'axial',
+        '2': 'sagittal',
+        '3': 'coronal',
+        '4': 'volume3d',
+      };
+      const target = panels[e.key];
+      if (target) setMax((m) => (m === target ? null : target));
+      else if (e.key === 'Escape') setMax(null);
+      else
+        switch (e.key.toLowerCase()) {
+          case 'c':
+            onCrosshairs(!crosshairs);
+            break;
+          case 'i':
+            onInvert();
+            break;
+          case 'r':
+            onReset();
+            break;
+          default:
+            return;
+        }
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crosshairs, volumeId, modality]);
+
   const panel = (key: ViewportKey) => (
     <div key={key} className={max && max !== key ? 'hidden' : 'contents'}>
       <ViewportPanel
@@ -163,6 +202,7 @@ export function ViewerLayout({
         label={LABELS[key]}
         ready={ready}
         is3d={key === 'volume3d'}
+        maximized={max === key}
         onMaximize={() => setMax(max ? null : key)}
       />
     </div>
@@ -183,7 +223,7 @@ export function ViewerLayout({
       />
       <div
         ref={grid}
-        className={`flex-1 grid gap-1 p-1 min-h-0 ${max ? 'grid-cols-1 grid-rows-1' : 'grid-cols-2 grid-rows-2'}`}
+        className={`grid min-h-0 flex-1 gap-2 bg-base p-2 ${max ? 'grid-cols-1 grid-rows-1' : 'grid-cols-1 grid-rows-4 md:grid-cols-2 md:grid-rows-2'}`}
       >
         {(['axial', 'sagittal', 'coronal', 'volume3d'] as ViewportKey[]).map(panel)}
       </div>

@@ -1,9 +1,130 @@
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
 @import 'tailwindcss';
+
+/*
+  Design tokens for the viewer.
+
+  Theme lock: dark only. Greyscale MR pixel data is judged against its
+  surround, so a light chrome would shift the perceived window/level of every
+  image on the page. Every clinical viewer is dark for this reason; this is a
+  deliberate single-theme page, not a missing light mode.
+
+  Radius rule, applied everywhere: controls 6px, surfaces 10px, and the full
+  pill reserved for status chips so "pill" always means "state, not action".
+
+  Accent: one teal, used for every interactive affordance. It is deliberately
+  not red, green or blue, because Cornerstone draws the three crosshair planes
+  in exactly those colours and the chrome must never be mistaken for them.
+  Amber and red stay semantic (degraded series, failure) and are never used
+  decoratively.
+*/
+@theme {
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, 'Cascadia Code', monospace;
+
+  --color-void: #07090a;
+  --color-base: #0c0f11;
+  --color-surface: #13171a;
+  --color-raised: #1a2024;
+  --color-line: #232a2f;
+  --color-line-strong: #333d44;
+  --color-ink: #e9eef1;
+  --color-muted: #98a4ac;
+  --color-faint: #6a767e;
+
+  --color-accent: #2fbfa8;
+  --color-accent-hi: #45d8c0;
+  --color-accent-dim: #1b6b5f;
+  --color-accent-ink: #032019;
+
+  --color-warn: #e2a440;
+  --color-danger: #e56b63;
+
+  --radius-control: 6px;
+  --radius-surface: 10px;
+
+  --ease-out-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
 :root {
   color-scheme: dark;
+  --dur-1: 120ms;
+  --dur-2: 220ms;
 }
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
   margin: 0;
-  background: #0a0a0a;
-  color: #f5f5f5;
+  background: var(--color-base);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Measurements, slice counters and UIDs must not reflow as digits change. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+::selection {
+  background: var(--color-accent-dim);
+  color: var(--color-ink);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+
+/*
+  Motion is feedback only: it tells you that something arrived, is under the
+  pointer, or accepted a press. MOTION_INTENSITY 4, so every rule below is
+  gated on prefers-reduced-motion and the page is fully usable without it.
+*/
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(200%);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rise {
+    animation: rise var(--dur-2) var(--ease-out-soft) both;
+    animation-delay: calc(var(--i, 0) * 45ms);
+  }
+
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, #ffffff0f, transparent);
+    animation: sweep 1.4s linear infinite;
+  }
+
+  .press:active {
+    transform: scale(0.98);
+  }
 }
