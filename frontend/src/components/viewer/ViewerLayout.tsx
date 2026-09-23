@@ -14,7 +14,7 @@ import {
   destroyToolGroups,
   setCrosshairsActive,
 } from '../../cornerstone/toolGroups';
-import { voiRange, type VoiPreset } from '../../cornerstone/presets';
+import { defaultVolumePreset, voiRange, type VoiPreset } from '../../cornerstone/presets';
 import { Toolbar } from './Toolbar';
 import { ViewportPanel } from './ViewportPanel';
 
@@ -38,9 +38,23 @@ export function ViewerLayout({
   const coronal = useRef<HTMLDivElement>(null);
   const volume3d = useRef<HTMLDivElement>(null);
   const refs = { axial, sagittal, coronal, volume3d };
+  const grid = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
   const [crosshairs, setCrosshairs] = useState(true);
   const [max, setMax] = useState<ViewportKey | null>(null);
+  const [voiPresetName, setVoiPresetName] = useState('');
+  const [volPresetName, setVolPresetName] = useState(() => defaultVolumePreset(modality));
+  // "Adjust state during rendering" (React's own pattern for resetting state
+  // when a prop changes) instead of an effect -- setState belongs in an
+  // effect only when synchronizing with an external system, and a new
+  // series' presets are derived purely from its own props.
+  const [seriesKey, setSeriesKey] = useState(`${volumeId}|${modality}`);
+  const nextSeriesKey = `${volumeId}|${modality}`;
+  if (seriesKey !== nextSeriesKey) {
+    setSeriesKey(nextSeriesKey);
+    setVoiPresetName('');
+    setVolPresetName(defaultVolumePreset(modality));
+  }
 
   useEffect(() => {
     const engine = createViewerLayout(ENGINE_ID, {
@@ -73,21 +87,37 @@ export function ViewerLayout({
     };
   }, [volumeId, modality]);
 
+  // Toggling `max` changes the grid's own column/row template, not the grid
+  // container's own box size, so it needs its own explicit resize() call --
+  // the ResizeObserver below won't fire for it.
   useEffect(() => {
     getRenderingEngine(ENGINE_ID)?.resize(true);
   }, [max]);
+
+  // Cornerstone doesn't observe its own canvas elements, so a window/layout
+  // resize leaves the four viewports rendering at their old size until
+  // something tells the engine to re-measure.
+  useEffect(() => {
+    const el = grid.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => getRenderingEngine(ENGINE_ID)?.resize(true));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const engine = () => getRenderingEngine(ENGINE_ID);
   const mpr = () => MPR_IDS.map((id) => engine()!.getViewport(id) as Types.IVolumeViewport);
   const vol3d = () => engine()!.getViewport(VIEWPORT_IDS.volume3d) as Types.IVolumeViewport;
 
   const onVoiPreset = (p: VoiPreset) => {
+    setVoiPresetName(p.name);
     for (const vp of mpr()) {
       vp.setProperties({ voiRange: voiRange(p) });
       vp.render();
     }
   };
   const onVolumePreset = (name: string) => {
+    setVolPresetName(name);
     vol3d().setProperties({ preset: name });
     vol3d().render();
   };
@@ -104,9 +134,19 @@ export function ViewerLayout({
       const vp = e.getViewport(id) as Types.IVolumeViewport;
       vp.resetProperties();
     }
-    void showVolume(e, volumeId, modality).catch((err: unknown) =>
-      console.error('showVolume failed', err),
-    );
+    setVoiPresetName('');
+    setVolPresetName(defaultVolumePreset(modality));
+    void showVolume(e, volumeId, modality)
+      .then(() => {
+        // Re-invoking setToolActive/setToolPassive unconditionally re-runs
+        // CrosshairsTool's onSetToolActive/onSetToolPassive, which recomputes
+        // its center from the viewports' cameras -- which resetProperties()
+        // above just put back to the default framing. That re-centres the
+        // crosshairs without reaching into CrosshairsTool's private
+        // (underscore-prefixed, untyped) recompute method directly.
+        setCrosshairsActive(crosshairs);
+      })
+      .catch((err: unknown) => console.error('showVolume failed', err));
   };
   const onCrosshairs = (on: boolean) => {
     setCrosshairs(on);
@@ -134,12 +174,15 @@ export function ViewerLayout({
         modality={modality}
         crosshairs={crosshairs}
         onCrosshairs={onCrosshairs}
+        voiPresetName={voiPresetName}
         onVoiPreset={onVoiPreset}
+        volPresetName={volPresetName}
         onVolumePreset={onVolumePreset}
         onInvert={onInvert}
         onReset={onReset}
       />
       <div
+        ref={grid}
         className={`flex-1 grid gap-1 p-1 min-h-0 ${max ? 'grid-cols-1 grid-rows-1' : 'grid-cols-2 grid-rows-2'}`}
       >
         {(['axial', 'sagittal', 'coronal', 'volume3d'] as ViewportKey[]).map(panel)}

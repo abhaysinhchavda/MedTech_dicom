@@ -14,7 +14,9 @@ test('CT toolbar exposes presets and fires callbacks', async () => {
       modality="CT"
       crosshairs
       onCrosshairs={onX}
+      voiPresetName=""
       onVoiPreset={onVoi}
+      volPresetName="CT-Bone"
       onVolumePreset={onVol}
       onInvert={onInvert}
       onReset={onReset}
@@ -45,7 +47,9 @@ test('MR toolbar disables the MPR window select when there are no VOI presets', 
       modality="MR"
       crosshairs={false}
       onCrosshairs={onX}
+      voiPresetName=""
       onVoiPreset={onVoi}
+      volPresetName="MR-Default"
       onVolumePreset={onVol}
       onInvert={onInvert}
       onReset={onReset}

@@ -5,7 +5,9 @@ export interface ToolbarProps {
   modality: string | null;
   crosshairs: boolean;
   onCrosshairs: (on: boolean) => void;
+  voiPresetName: string;
   onVoiPreset: (p: VoiPreset) => void;
+  volPresetName: string;
   onVolumePreset: (name: string) => void;
   onInvert: () => void;
   onReset: () => void;
@@ -24,7 +26,7 @@ export function Toolbar(p: ToolbarProps) {
         <select
           aria-label="MPR window"
           className="bg-neutral-800 rounded px-1"
-          defaultValue=""
+          value={p.voiPresetName}
           disabled={voi.length === 0}
           onChange={(e) => {
             const s = voi.find((x) => x.name === e.target.value);
@@ -46,7 +48,7 @@ export function Toolbar(p: ToolbarProps) {
         <select
           aria-label="3D preset"
           className="bg-neutral-800 rounded px-1"
-          defaultValue={vol[0]}
+          value={p.volPresetName}
           disabled={vol.length === 0}
           onChange={(e) => p.onVolumePreset(e.target.value)}
         >
