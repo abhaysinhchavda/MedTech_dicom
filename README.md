@@ -33,6 +33,9 @@ indexes it into SQLite, and serves it over a DICOMweb subset.
 behind OHIF). Cornerstone's streaming volume loader reads the backend's WADO-RS endpoints
 directly; the app contains no DICOM parsing of its own.
 
+More detail: [architecture](docs/architecture.md) · [data flow](docs/data-flow.md) ·
+[technical requirements](docs/trd.md).
+
 ## Screenshots
 
 | Study browser | T1 MPRAGE (JPEG 2000) |
