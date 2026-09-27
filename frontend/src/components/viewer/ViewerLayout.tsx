@@ -16,6 +16,7 @@ import {
   setActiveMprTool,
   type MprTool,
 } from '../../cornerstone/toolGroups';
+import type { Segment } from '../../api/types';
 import { defaultVolumePreset, voiRange, type VoiPreset } from '../../cornerstone/presets';
 import { Toolbar } from './Toolbar';
 import { ViewportPanel } from './ViewportPanel';
@@ -37,6 +38,15 @@ export interface ViewerLayoutProps {
   onSave: () => void;
   reportUrl: string | null;
   onAnnotationChange: () => void;
+  segments: Segment[];
+  activeSegment: number;
+  onSelectSegment: (n: number) => void;
+  onAddSegment: () => void;
+  canSegment: boolean;
+  segDirty: boolean;
+  segSaving: boolean;
+  onSaveSegmentation: () => void;
+  onSegmentationChange: () => void;
 }
 
 export function ViewerLayout({
@@ -48,6 +58,15 @@ export function ViewerLayout({
   onSave,
   reportUrl,
   onAnnotationChange,
+  segments,
+  activeSegment,
+  onSelectSegment,
+  onAddSegment,
+  canSegment,
+  segDirty,
+  segSaving,
+  onSaveSegmentation,
+  onSegmentationChange,
 }: ViewerLayoutProps) {
   const axial = useRef<HTMLDivElement>(null);
   const sagittal = useRef<HTMLDivElement>(null);
@@ -226,6 +245,15 @@ export function ViewerLayout({
     };
   }, [onAnnotationChange]);
 
+  // Painting fires on the same global target. Kept separate from the
+  // annotation listener because the two save independently.
+  useEffect(() => {
+    const mark = () => onSegmentationChange();
+    const event = csToolsEnums.Events.SEGMENTATION_DATA_MODIFIED;
+    eventTarget.addEventListener(event, mark);
+    return () => eventTarget.removeEventListener(event, mark);
+  }, [onSegmentationChange]);
+
   const panel = (key: ViewportKey) => (
     <div key={key} className={max && max !== key ? 'hidden' : 'contents'}>
       <ViewportPanel
@@ -252,6 +280,14 @@ export function ViewerLayout({
         canMeasure={canMeasure}
         onSave={onSave}
         reportUrl={reportUrl}
+        segments={segments}
+        activeSegment={activeSegment}
+        onSelectSegment={onSelectSegment}
+        onAddSegment={onAddSegment}
+        canSegment={canSegment}
+        segDirty={segDirty}
+        segSaving={segSaving}
+        onSaveSegmentation={onSaveSegmentation}
         voiPresetName={voiPresetName}
         onVoiPreset={onVoiPreset}
         volPresetName={volPresetName}

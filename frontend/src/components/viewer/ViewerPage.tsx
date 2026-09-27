@@ -3,7 +3,9 @@ import { ArrowLeft } from '@phosphor-icons/react';
 import { Link, useParams } from 'react-router';
 import { apiUrl } from '../../api/client';
 import { getSeries } from '../../api/dicomweb';
+import { MPR_IDS } from '../../cornerstone/viewports';
 import { useMeasurements } from '../../hooks/useMeasurements';
+import { useSegmentation } from '../../hooks/useSegmentation';
 import { useVolume } from '../../hooks/useVolume';
 import { Brand } from '../ui/Brand';
 import { ErrorBanner } from '../ui/ErrorBanner';
@@ -33,6 +35,7 @@ export function ViewerPage() {
   const description = seriesQ.data?.find((s) => s.seriesUid === seriesUid)?.description ?? '';
   const big = (v.info?.estimatedBytes ?? 0) > 1e9;
   const m = useMeasurements(seriesUid, v.status === 'ready');
+  const seg = useSegmentation(seriesUid, v.status === 'ready', v.volumeId, MPR_IDS);
   const reportUrl =
     m.set?.srSeriesUid && m.set.srSopUid
       ? apiUrl(
@@ -87,6 +90,15 @@ export function ViewerPage() {
               onSave={() => void m.save()}
               reportUrl={reportUrl}
               onAnnotationChange={m.markDirty}
+              segments={seg.segments}
+              activeSegment={seg.activeSegment}
+              onSelectSegment={seg.selectSegment}
+              onAddSegment={seg.addSegment}
+              canSegment={seg.canSegment}
+              segDirty={seg.dirty}
+              segSaving={seg.saving}
+              onSaveSegmentation={() => void seg.save()}
+              onSegmentationChange={seg.markDirty}
             />
           )}
           {/* Both notices are non-blocking on purpose: an unreadable or
@@ -100,12 +112,21 @@ export function ViewerPage() {
               replace it.
             </div>
           )}
-          {m.error && (
+          {seg.parseError && (
+            <div
+              role="status"
+              className="absolute inset-x-2 top-24 z-20 rounded-control border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn"
+            >
+              A segmentation exists for this series but could not be read. Painting and saving will
+              replace it.
+            </div>
+          )}
+          {(m.error ?? seg.error) && (
             <div
               role="alert"
               className="absolute inset-x-2 top-14 z-20 rounded-control border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger"
             >
-              {m.error}
+              {m.error ?? seg.error}
             </div>
           )}
         </div>

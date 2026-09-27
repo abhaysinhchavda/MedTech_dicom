@@ -18,6 +18,22 @@ const baseProps = (): ToolbarProps => ({
   canMeasure: true,
   onSave: vi.fn(),
   reportUrl: null,
+  segments: [
+    {
+      number: 1,
+      label: 'Tumour',
+      trackingUid: '2.25.101',
+      categoryCode: '49755003',
+      typeCode: '372087000',
+    },
+  ],
+  activeSegment: 1,
+  onSelectSegment: vi.fn(),
+  onAddSegment: vi.fn(),
+  canSegment: true,
+  segDirty: false,
+  segSaving: false,
+  onSaveSegmentation: vi.fn(),
 });
 
 test('CT toolbar exposes presets and fires callbacks', async () => {
@@ -70,6 +86,45 @@ test('save is disabled until something changes, and reports when saving', () => 
 
   rerender(<Toolbar {...baseProps()} dirty saving />);
   expect(screen.getByRole('button', { name: /saving/i })).toBeDisabled();
+});
+
+test('the brush paints the selected segment and Erase is segment 0', async () => {
+  const p = baseProps();
+  render(<Toolbar {...p} />);
+
+  await userEvent.click(screen.getByRole('button', { name: /brush/i }));
+  expect(p.onTool).toHaveBeenCalledWith('Brush');
+
+  // 0 is the unlabelled value, so painting with it clears voxels. That is why
+  // there is no separate eraser tool.
+  await userEvent.selectOptions(screen.getByLabelText('Segment'), 'Erase');
+  expect(p.onSelectSegment).toHaveBeenCalledWith(0);
+});
+
+test('adding a segment is offered and fires', async () => {
+  const p = baseProps();
+  render(<Toolbar {...p} />);
+  await userEvent.click(screen.getByRole('button', { name: /add segment/i }));
+  expect(p.onAddSegment).toHaveBeenCalled();
+});
+
+test('segmentation controls are disabled when the series cannot be segmented', () => {
+  render(<Toolbar {...baseProps()} canSegment={false} />);
+  expect(screen.getByRole('button', { name: /brush/i })).toBeDisabled();
+  expect(screen.getByLabelText('Segment')).toBeDisabled();
+  expect(screen.getByRole('button', { name: /add segment/i })).toBeDisabled();
+  // Measuring and navigating are unaffected: the two save independently.
+  expect(screen.getByRole('button', { name: /crosshairs/i })).toBeEnabled();
+});
+
+test('the segmentation save is independent of the measurement save', () => {
+  const { rerender } = render(<Toolbar {...baseProps()} />);
+  expect(screen.getByRole('button', { name: /segmentation saved/i })).toBeDisabled();
+
+  // Only the mask is dirty, so only its button arms.
+  rerender(<Toolbar {...baseProps()} segDirty />);
+  expect(screen.getByRole('button', { name: /save segmentation/i })).toBeEnabled();
+  expect(screen.getByRole('button', { name: /^saved$/i })).toBeDisabled();
 });
 
 test('the report link appears only once a report exists', () => {
