@@ -16,6 +16,7 @@ const segmentation = {
   addSegmentations: vi.fn(),
   addLabelmapRepresentationToViewport: vi.fn(),
   removeSegmentation: vi.fn(),
+  state: { getSegmentation: vi.fn(() => ({ segmentationId: 'seg:1' })) },
   segmentIndex: { setActiveSegmentIndex: vi.fn() },
 };
 
@@ -78,5 +79,20 @@ describe('the segmentation adapter', () => {
     releaseSegmentation('seg:1');
     expect(segmentation.removeSegmentation).toHaveBeenCalledWith('seg:1');
     expect(cache.removeVolumeLoadObject).toHaveBeenCalledWith('seg:1');
+  });
+
+  test('releasing something that was never created is a no-op, not a throw', () => {
+    // Cornerstone throws on an id it is not holding, and this runs on every
+    // unmount -- including one that happens before createLabelmap resolves,
+    // which is exactly what StrictMode's mount/unmount/remount produces. An
+    // unguarded release took the whole viewer down there.
+    segmentation.removeSegmentation.mockClear();
+    cache.removeVolumeLoadObject.mockClear();
+    segmentation.state.getSegmentation.mockReturnValueOnce(undefined as never);
+    cache.getVolume.mockReturnValueOnce(undefined as never);
+
+    expect(() => releaseSegmentation('seg:never')).not.toThrow();
+    expect(segmentation.removeSegmentation).not.toHaveBeenCalled();
+    expect(cache.removeVolumeLoadObject).not.toHaveBeenCalled();
   });
 });

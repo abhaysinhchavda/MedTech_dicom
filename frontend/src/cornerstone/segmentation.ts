@@ -61,6 +61,12 @@ export function setActiveSegment(segmentationId: string, segmentNumber: number):
 export function releaseSegmentation(segmentationId: string): void {
   // Cornerstone's segmentation state is global, like its annotation state, so
   // leaving the viewer has to clear it or the next series inherits this mask.
-  segmentation.removeSegmentation(segmentationId);
-  cache.removeVolumeLoadObject(segmentationId);
+  //
+  // Both calls throw on an id they are not holding, and this cleanup runs
+  // whether or not a labelmap was ever created -- StrictMode's
+  // mount/unmount/remount tears the viewer down while createLabelmap is still
+  // in flight -- so neither can be unconditional.
+  if (segmentation.state.getSegmentation(segmentationId))
+    segmentation.removeSegmentation(segmentationId);
+  if (cache.getVolume(segmentationId)) cache.removeVolumeLoadObject(segmentationId);
 }

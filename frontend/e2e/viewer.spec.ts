@@ -21,6 +21,17 @@ async function canvasIsNonBlack(page: Page, panel: string): Promise<boolean> {
   }, panel);
 }
 
+// Time-to-first-paint grows with every viewer mounted in the same browser
+// process -- measured at ~5s, ~20s and over 30s for the first, second and
+// third -- because swiftshader is a software rasteriser and the GPU process
+// reclaims a closed page's resources lazily. The budget therefore has to
+// cover the LAST test to run, not the first; 30s only ever passed because
+// this suite used to hold two tests. The assertion itself is unchanged: a
+// real, non-black render is still required.
+async function awaitPainted(page: Page, panel: string): Promise<void> {
+  await expect.poll(() => canvasIsNonBlack(page, panel), { timeout: 90_000 }).toBe(true);
+}
+
 test('open series, scroll, crosshairs, preset, reopen', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -29,8 +40,7 @@ test('open series, scroll, crosshairs, preset, reopen', async ({ page }) => {
   await page.getByRole('row', { name: /Test\^Patient/ }).click();
   await page.getByRole('link', { name: /Synthetic series/ }).click();
   await expect(page.getByRole('progressbar')).toBeHidden({ timeout: 90_000 });
-  for (const p of ['Axial', 'Sagittal', 'Coronal', '3D'])
-    await expect.poll(() => canvasIsNonBlack(page, p), { timeout: 30_000 }).toBe(true);
+  for (const p of ['Axial', 'Sagittal', 'Coronal', '3D']) await awaitPainted(page, p);
 
   // Cornerstone3D's default MPR camera lands on image index
   // Math.floor((numberOfSlices - 1) / 2) = 19 for a 40-slice volume, i.e.
@@ -57,7 +67,7 @@ test('open series, scroll, crosshairs, preset, reopen', async ({ page }) => {
   await page.getByRole('row', { name: /Test\^Patient/ }).click();
   await page.getByRole('link', { name: /Synthetic series/ }).click();
   await expect(page.getByRole('progressbar')).toBeHidden({ timeout: 90_000 });
-  await expect.poll(() => canvasIsNonBlack(page, 'Axial'), { timeout: 30_000 }).toBe(true);
+  await awaitPainted(page, 'Axial');
   expect(errors).toEqual([]);
 });
 
@@ -69,7 +79,7 @@ test('a painted segmentation survives a reload as a stored DICOM SEG', async ({ 
   await page.getByRole('row', { name: /Test\^Patient/ }).click();
   await page.getByRole('link', { name: /Synthetic series/ }).click();
   await expect(page.getByRole('progressbar')).toBeHidden({ timeout: 90_000 });
-  await expect.poll(() => canvasIsNonBlack(page, 'Axial'), { timeout: 30_000 }).toBe(true);
+  await awaitPainted(page, 'Axial');
 
   await page.getByRole('button', { name: /brush/i }).click();
   const box = (await page.getByTestId('panel-Axial').boundingBox())!;
@@ -111,7 +121,7 @@ test('a measurement survives a reload as a stored Structured Report', async ({ p
   await page.getByRole('row', { name: /Test\^Patient/ }).click();
   await page.getByRole('link', { name: /Synthetic series/ }).click();
   await expect(page.getByRole('progressbar')).toBeHidden({ timeout: 90_000 });
-  await expect.poll(() => canvasIsNonBlack(page, 'Axial'), { timeout: 30_000 }).toBe(true);
+  await awaitPainted(page, 'Axial');
 
   await page.getByRole('button', { name: /length/i }).click();
   const box = (await page.getByTestId('panel-Axial').boundingBox())!;

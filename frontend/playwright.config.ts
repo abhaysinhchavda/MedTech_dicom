@@ -17,7 +17,10 @@ const py = join(import.meta.dirname, '..', 'backend', '.venv', 'Scripts', 'pytho
 
 export default defineConfig({
   testDir: 'e2e',
-  timeout: 120_000,
+  // Headroom for awaitPainted's 90s budget (see e2e/viewer.spec.ts): the
+  // first test waits on four panels, and a test that opens the viewer twice
+  // pays that wait twice.
+  timeout: 300_000,
   use: {
     baseURL: 'http://localhost:5173',
     launchOptions: {
@@ -26,6 +29,13 @@ export default defineConfig({
         '--use-angle=swiftshader',
         '--enable-unsafe-swiftshader',
         '--ignore-gpu-blocklist',
+        // Every viewer page builds five WebGL contexts (four viewports plus
+        // vtk.js's own), and StrictMode mounts the engine twice, so three
+        // tests in one browser process blow past Chromium's default cap of
+        // 16. Past it Chromium evicts the OLDEST contexts -- which by then
+        // belong to the test currently running -- and a lost context never
+        // paints again, so the panel stays black for the rest of the test.
+        '--max-active-webgl-contexts=64',
       ],
     },
   },
