@@ -117,7 +117,7 @@ no segment declares, or a series that is not a volume. Bodies are `{detail}`.
 ## 6. Verification
 
 `scripts/test.ps1` → **151 backend tests** (pytest) + 3 script tests + ruff +
-mypy + **72 frontend tests** (vitest), exit 0, no warnings.
+mypy + **73 frontend tests** (vitest), exit 0, no warnings.
 `cd frontend; npm run e2e` → **3 Playwright tests**: the first seeds a
 synthetic 40-slice series, opens it, and asserts four non-blank canvases,
 scroll, crosshair sync, preset change and reopen; the second paints with the

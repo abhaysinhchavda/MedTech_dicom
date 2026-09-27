@@ -57,6 +57,13 @@ export function useSegmentation(
   // Keyed to the series, not a bare boolean: switching series without
   // remounting must load the new mask rather than keep the old one on screen.
   const loadedFor = useRef<string | null>(null);
+  // Setting up the labelmap is itself a segmentation edit as far as
+  // Cornerstone is concerned: creating it, filling it and adding it to a
+  // viewport all fire SEGMENTATION_DATA_MODIFIED, and those events arrive a
+  // frame after the load finishes, so clearing the flag at the end of the
+  // load does not catch them. Without this gate every series opened with its
+  // own Save button already armed, before anyone had painted a voxel.
+  const painting = useRef(false);
 
   const q = useQuery({
     queryKey: ['segmentation', seriesUid],
@@ -70,6 +77,7 @@ export function useSegmentation(
   useEffect(() => {
     if (!ready || !data || !referenceVolumeId || loadedFor.current === seriesUid) return;
     loadedFor.current = seriesUid;
+    painting.current = false;
     let alive = true;
     void (async () => {
       await createLabelmap(referenceVolumeId, segmentationId);
@@ -85,6 +93,12 @@ export function useSegmentation(
       setActiveSegmentOnVolume(segmentationId, restored[0]!.number);
       setDirty(false);
       setError(null);
+      // One frame later, so the setup's own events have been and gone. A user
+      // cannot paint inside a single frame of the volume becoming ready, so
+      // nothing real is dropped here.
+      requestAnimationFrame(() => {
+        if (alive) painting.current = true;
+      });
     })().catch((e: Error) => {
       if (alive) setError(e.message);
     });
@@ -144,7 +158,9 @@ export function useSegmentation(
     setDirty(true);
   }, []);
 
-  const markDirty = useCallback(() => setDirty(true), []);
+  const markDirty = useCallback(() => {
+    if (painting.current) setDirty(true);
+  }, []);
 
   return {
     status: q.isPending ? 'loading' : q.isError ? 'error' : 'ready',
