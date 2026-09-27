@@ -61,6 +61,48 @@ test('open series, scroll, crosshairs, preset, reopen', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('a painted segmentation survives a reload as a stored DICOM SEG', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+
+  await page.goto('/');
+  await page.getByRole('row', { name: /Test\^Patient/ }).click();
+  await page.getByRole('link', { name: /Synthetic series/ }).click();
+  await expect(page.getByRole('progressbar')).toBeHidden({ timeout: 90_000 });
+  await expect.poll(() => canvasIsNonBlack(page, 'Axial'), { timeout: 30_000 }).toBe(true);
+
+  await page.getByRole('button', { name: /brush/i }).click();
+  const box = (await page.getByTestId('panel-Axial').boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.45, box.y + box.height * 0.45);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.55, box.y + box.height * 0.55, { steps: 12 });
+  await page.mouse.up();
+
+  const save = page.getByRole('button', { name: /save segmentation/i });
+  await expect(save).toBeEnabled({ timeout: 15_000 });
+  await save.click();
+  await expect(page.getByRole('button', { name: /segmentation saved/i })).toBeVisible({
+    timeout: 30_000,
+  });
+
+  await page.reload();
+  await expect(page.getByRole('progressbar')).toBeHidden({ timeout: 90_000 });
+
+  // The proof is the mask coming back out of the store, not rendered pixels:
+  // asserting on the overlay under swiftshader would be flaky, and the
+  // labelmap endpoint only answers 200 once a real SEG was written, indexed
+  // and parsed back.
+  const seriesUid = page.url().split('/').pop()!;
+  const labelmap = await page.request.get(
+    `http://localhost:8001/api/series/${seriesUid}/segmentation/labelmap`,
+  );
+  expect(labelmap.status()).toBe(200);
+  const painted = (await labelmap.body()).reduce((n, v) => n + (v !== 0 ? 1 : 0), 0);
+  expect(painted).toBeGreaterThan(0);
+
+  expect(errors).toEqual([]);
+});
+
 test('a measurement survives a reload as a stored Structured Report', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
