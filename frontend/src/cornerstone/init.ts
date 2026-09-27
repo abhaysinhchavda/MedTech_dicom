@@ -4,6 +4,7 @@ import {
   addTool,
   AngleTool,
   BidirectionalTool,
+  BrushTool,
   CrosshairsTool,
   EllipticalROITool,
   LengthTool,
@@ -64,6 +65,7 @@ export function initCornerstone(): Promise<void> {
       ProbeTool,
       EllipticalROITool,
       BidirectionalTool,
+      BrushTool,
     ])
       addTool(T);
   })();

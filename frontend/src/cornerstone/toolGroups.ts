@@ -1,6 +1,7 @@
 import {
   AngleTool,
   BidirectionalTool,
+  BrushTool,
   CrosshairsTool,
   EllipticalROITool,
   Enums,
@@ -20,11 +21,13 @@ export const MPR_TOOL_GROUP = 'mpr';
 export const VOL_TOOL_GROUP = 'vol3d';
 const { MouseBindings, KeyboardBindings } = Enums;
 
-export type MprTool = 'crosshairs' | 'windowLevel' | ToolName;
+export type MprTool = 'crosshairs' | 'windowLevel' | ToolName | 'Brush';
 
-// Measurement tools go on the MPR group only. The 3D volume viewport has no
-// in-plane geometry to measure against.
+// Measurement and paint tools go on the MPR group only. The 3D volume
+// viewport has no in-plane geometry to measure against, and it carries no
+// labelmap representation in this increment.
 const MEASURE_TOOLS = [LengthTool, AngleTool, ProbeTool, EllipticalROITool, BidirectionalTool];
+const PAINT_TOOLS = [BrushTool];
 const LINE_COLORS: Record<string, string> = {
   [VIEWPORT_IDS.axial]: 'rgb(200, 0, 0)',
   [VIEWPORT_IDS.sagittal]: 'rgb(200, 200, 0)',
@@ -60,7 +63,7 @@ export function createToolGroups(engineId: string): void {
   mpr.setToolActive(StackScrollTool.toolName, {
     bindings: [{ mouseButton: MouseBindings.Wheel }],
   });
-  for (const Tool of MEASURE_TOOLS) mpr.addTool(Tool.toolName);
+  for (const Tool of [...MEASURE_TOOLS, ...PAINT_TOOLS]) mpr.addTool(Tool.toolName);
   setActiveMprTool('crosshairs');
 
   const vol = ToolGroupManager.createToolGroup(VOL_TOOL_GROUP)!;
@@ -95,6 +98,9 @@ export function setActiveMprTool(tool: MprTool): void {
   mpr.setToolDisabled(CrosshairsTool.toolName);
   mpr.setToolPassive(WindowLevelTool.toolName);
   for (const Tool of MEASURE_TOOLS) mpr.setToolPassive(Tool.toolName);
+  // The brush is disabled rather than passive: a passive brush still reacts
+  // to the pointer and would paint while another tool is meant to own the drag.
+  for (const Tool of PAINT_TOOLS) mpr.setToolDisabled(Tool.toolName);
 
   if (tool === 'crosshairs') mpr.setToolActive(CrosshairsTool.toolName, { bindings: PRIMARY });
   else if (tool === 'windowLevel')

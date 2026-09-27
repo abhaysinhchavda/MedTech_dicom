@@ -60,6 +60,34 @@ export const handlers = [
     ),
   ),
   http.get(`${API}/api/series/${SERIES}/volume-info`, () => HttpResponse.json(volumeInfoJson)),
+  http.get(`${API}/api/series/${SERIES}/segmentation`, () =>
+    HttpResponse.json({
+      seriesUid: SERIES,
+      frameOfReferenceUid: '1.2.9',
+      dims: [16, 16, 4],
+      segSeriesUid: null,
+      segSopUid: null,
+      parseError: null,
+      segments: [],
+    }),
+  ),
+  // 404 is the ordinary "nothing painted yet" answer, not an error.
+  http.get(`${API}/api/series/${SERIES}/segmentation/labelmap`, () =>
+    HttpResponse.text('not found', { status: 404 }),
+  ),
+  http.put(`${API}/api/series/${SERIES}/segmentation`, async ({ request }) => {
+    const form = await request.formData();
+    const parsed = JSON.parse(String(form.get('meta'))) as { segments: unknown[] };
+    return HttpResponse.json({
+      seriesUid: SERIES,
+      frameOfReferenceUid: '1.2.9',
+      dims: [16, 16, 4],
+      segSeriesUid: '1.2.9.3',
+      segSopUid: '1.2.9.4',
+      parseError: null,
+      segments: parsed.segments,
+    });
+  }),
   http.get(`${API}/api/series/${SERIES}/measurements`, () =>
     HttpResponse.json({
       seriesUid: SERIES,

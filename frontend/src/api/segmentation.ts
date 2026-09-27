@@ -30,10 +30,15 @@ export async function putSegmentation(
   // segSopUid is the one the client loaded; the backend answers 409 if it is
   // no longer current, so a second tab cannot be overwritten silently.
   body.append('meta', JSON.stringify({ segSopUid, dims, segments }));
+  // File rather than Blob, matching uploadFiles. vitest.setup.ts swaps in
+  // undici's FormData and node:buffer's File but leaves jsdom's Blob in
+  // place, and undici rejects a foreign Blob with "Expected value to be an
+  // instance of Blob". File is a Blob in the browser, so this costs nothing.
   body.append(
     'labelmap',
-    new Blob([labelmap as unknown as BlobPart], { type: 'application/octet-stream' }),
-    'labelmap.bin',
+    new File([labelmap as unknown as BlobPart], 'labelmap.bin', {
+      type: 'application/octet-stream',
+    }),
   );
   const res = await fetch(`${API_URL}/api/series/${seriesUid}/segmentation`, {
     method: 'PUT',
