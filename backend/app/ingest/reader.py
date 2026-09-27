@@ -7,7 +7,19 @@ import pydicom
 from pydicom.dataset import Dataset
 from pydicom.errors import InvalidDicomError
 
-REQUIRED = ("SOPInstanceUID", "SeriesInstanceUID", "StudyInstanceUID", "PixelData")
+# Comprehensive SR, Enhanced SR, Comprehensive 3D SR. These carry a
+# ContentSequence instead of PixelData, so the image required-tag set below
+# would reject every one of them.
+SR_SOP_CLASSES = frozenset(
+    {
+        "1.2.840.10008.5.1.4.1.1.88.11",
+        "1.2.840.10008.5.1.4.1.1.88.22",
+        "1.2.840.10008.5.1.4.1.1.88.34",
+    }
+)
+_UIDS = ("SOPInstanceUID", "SeriesInstanceUID", "StudyInstanceUID")
+REQUIRED_IMAGE = (*_UIDS, "PixelData")
+REQUIRED_SR = (*_UIDS, "ContentSequence")
 
 # The three UIDs that become path segments in app.ingest.store.file_instance.
 # pydicom only *warns* on malformed UI values (it does not raise), so a crafted
@@ -28,7 +40,8 @@ def read_dicom(path: Path) -> Dataset:
         ds = pydicom.dcmread(path, force=False)
     except (InvalidDicomError, OSError, ValueError) as e:
         raise NotDicomError(f"{path.name}: not a DICOM file ({e})") from e
-    for tag in REQUIRED:
+    is_sr = str(ds.get("SOPClassUID", "")) in SR_SOP_CLASSES
+    for tag in REQUIRED_SR if is_sr else REQUIRED_IMAGE:
         if tag not in ds:
             raise NotDicomError(f"{path.name}: missing {tag}")
     for tag in UID_TAGS:

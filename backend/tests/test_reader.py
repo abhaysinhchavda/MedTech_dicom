@@ -20,13 +20,24 @@ def test_rejects_non_dicom(tmp_path: Path) -> None:
         read_dicom(p)
 
 
-def test_rejects_object_without_pixel_data(tmp_path: Path) -> None:
+def test_rejects_image_object_without_pixel_data(tmp_path: Path) -> None:
+    (ds,) = make_ct_series(1)
+    del ds.PixelData
+    p = tmp_path / "nopixels.dcm"
+    pydicom.dcmwrite(p, ds, enforce_file_format=True)
+    with pytest.raises(NotDicomError, match="PixelData"):
+        read_dicom(p)
+
+
+def test_rejects_sr_object_without_content(tmp_path: Path) -> None:
+    # An SR SOP class is held to the SR required-tag set instead: it is
+    # supposed to have no PixelData, so the meaningful absence is its content.
     (ds,) = make_ct_series(1)
     del ds.PixelData
     ds.SOPClassUID = "1.2.840.10008.5.1.4.1.1.88.11"  # Basic Text SR
     p = tmp_path / "sr.dcm"
     pydicom.dcmwrite(p, ds, enforce_file_format=True)
-    with pytest.raises(NotDicomError, match="PixelData"):
+    with pytest.raises(NotDicomError, match="ContentSequence"):
         read_dicom(p)
 
 

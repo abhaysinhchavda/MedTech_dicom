@@ -20,10 +20,14 @@ def volume_info(series_uid: str, conn: sqlite3.Connection = Depends(get_db)) -> 
     est = None
     if v.dims:
         first = repo.list_instances(conn, series_uid)[0]
-        est = (
-            v.dims[0] * v.dims[1] * v.dims[2]
-            * (first.bits_allocated // 8) * first.samples_per_pixel
-        )
+        # bits_allocated and samples_per_pixel are None on a non-image
+        # instance. A series with dims should never be one, but the arithmetic
+        # would raise TypeError rather than answer the request.
+        if first.bits_allocated is not None and first.samples_per_pixel is not None:
+            est = (
+                v.dims[0] * v.dims[1] * v.dims[2]
+                * (first.bits_allocated // 8) * first.samples_per_pixel
+            )
     return {
         "seriesUid": s.series_uid, "isVolume": v.is_volume, "reason": v.reason,
         "dims": list(v.dims) if v.dims else None, "spacing": list(v.spacing) if v.spacing else None,

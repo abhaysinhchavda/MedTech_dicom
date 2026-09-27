@@ -11,17 +11,22 @@ class InstanceRow:
     sop_uid: str
     series_uid: str
     instance_number: int | None
-    rows: int
-    cols: int
-    bits_allocated: int
-    pixel_representation: int
-    samples_per_pixel: int
-    num_frames: int
+    # Image-only. A DICOM instance need not be an image: a Structured Report
+    # carries a ContentSequence and none of these.
+    rows: int | None
+    cols: int | None
+    bits_allocated: int | None
+    pixel_representation: int | None
+    samples_per_pixel: int | None
+    num_frames: int | None
     ipp: tuple[float, float, float] | None
     iop: tuple[float, float, float, float, float, float] | None
     pixel_spacing: tuple[float, float] | None
     path: str
     transfer_syntax: str
+    # Last, with a default, so the many positional constructions in the tests
+    # and in geometry fixtures keep working.
+    sop_class_uid: str | None = None
 
 
 @dataclass(frozen=True)
@@ -46,6 +51,10 @@ class SeriesRow:
     sort_method: SortMethod | None = None
     volume: VolumeInfo = field(default_factory=lambda: VolumeInfo(False, "not finalized"))
     frame_count: int = 0  # sum of NumberOfFrames across instances; matches volume dims[2]
+    # Set on a derived series (e.g. an SR) to the image series it was made
+    # from, so the report for a series can be found without opening every SR
+    # in the study.
+    derived_from_series_uid: str | None = None
 
 
 @dataclass(frozen=True)

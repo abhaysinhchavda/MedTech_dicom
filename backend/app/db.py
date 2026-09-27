@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS series (
   instance_count INTEGER DEFAULT 0, frame_count INTEGER DEFAULT 0,
   thumb_sop_uid TEXT, sort_method TEXT,
   is_volume INTEGER DEFAULT 0, volume_reason TEXT,
+  derived_from_series_uid TEXT,
   dim_x INTEGER, dim_y INTEGER, dim_z INTEGER,
   spacing_x REAL, spacing_y REAL, spacing_z REAL,
   origin_x REAL, origin_y REAL, origin_z REAL, direction TEXT
@@ -27,6 +28,7 @@ CREATE TABLE IF NOT EXISTS instance (
   bits_allocated INTEGER, pixel_representation INTEGER, samples_per_pixel INTEGER,
   num_frames INTEGER,
   ipp_x REAL, ipp_y REAL, ipp_z REAL, iop TEXT, pixel_spacing TEXT,
+  sop_class_uid TEXT,
   path TEXT NOT NULL, transfer_syntax TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_series_study ON series(study_uid);
@@ -54,6 +56,30 @@ def connect(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
+# Columns added after the first release. `init_schema` only runs
+# CREATE TABLE IF NOT EXISTS, which silently does nothing for a table that
+# already exists, so a store created before this feature would never gain them.
+_ADDED_COLUMNS = (
+    ("instance", "sop_class_uid", "TEXT"),
+    ("series", "derived_from_series_uid", "TEXT"),
+)
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    for table, column, decl in _ADDED_COLUMNS:
+        existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        # An empty set means the table does not exist at all, which only
+        # happens if SCHEMA itself failed; adding a column would mask that.
+        if existing and column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+    # Created after the ALTERs, not in SCHEMA: on an existing database the
+    # column does not exist yet when executescript(SCHEMA) runs.
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS ix_series_derived ON series(derived_from_series_uid)"
+    )
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    _migrate(conn)
     conn.commit()

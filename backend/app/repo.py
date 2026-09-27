@@ -24,18 +24,41 @@ def upsert_study(conn: sqlite3.Connection, s: StudyRow) -> None:
 
 def upsert_series(conn: sqlite3.Connection, s: SeriesRow) -> None:
     conn.execute(
-        """INSERT INTO series (series_uid, study_uid, modality, series_desc, series_number)
-           VALUES (?,?,?,?,?)
+        """INSERT INTO series (series_uid, study_uid, modality, series_desc, series_number,
+                               derived_from_series_uid)
+           VALUES (?,?,?,?,?,?)
            ON CONFLICT(series_uid) DO UPDATE SET modality=excluded.modality,
-             series_desc=excluded.series_desc, series_number=excluded.series_number""",
-        (s.series_uid, s.study_uid, s.modality, s.series_desc, s.series_number),
+             series_desc=excluded.series_desc, series_number=excluded.series_number,
+             derived_from_series_uid=COALESCE(excluded.derived_from_series_uid,
+                                              series.derived_from_series_uid)""",
+        (
+            s.series_uid,
+            s.study_uid,
+            s.modality,
+            s.series_desc,
+            s.series_number,
+            s.derived_from_series_uid,
+        ),
     )
+
+
+_INSTANCE_COLUMNS = (
+    "sop_uid", "series_uid", "instance_number", "rows", "cols",
+    "bits_allocated", "pixel_representation", "samples_per_pixel", "num_frames",
+    "ipp_x", "ipp_y", "ipp_z", "iop", "pixel_spacing",
+    "sop_class_uid", "path", "transfer_syntax",
+)
 
 
 def upsert_instance(conn: sqlite3.Connection, i: InstanceRow) -> None:
     ipp = i.ipp or (None, None, None)
+    # Named columns rather than `VALUES (?,...)`: a positional insert silently
+    # couples this statement to the table's physical column order and breaks
+    # on the next ALTER TABLE.
+    cols = ", ".join(_INSTANCE_COLUMNS)
+    marks = ", ".join("?" * len(_INSTANCE_COLUMNS))
     conn.execute(
-        "INSERT OR REPLACE INTO instance VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        f"INSERT OR REPLACE INTO instance ({cols}) VALUES ({marks})",
         (
             i.sop_uid,
             i.series_uid,
@@ -51,6 +74,7 @@ def upsert_instance(conn: sqlite3.Connection, i: InstanceRow) -> None:
             ipp[2],
             "\\".join(map(str, i.iop)) if i.iop else None,
             "\\".join(map(str, i.pixel_spacing)) if i.pixel_spacing else None,
+            i.sop_class_uid,
             i.path,
             i.transfer_syntax,
         ),
@@ -141,6 +165,7 @@ def _series_from_row(r: sqlite3.Row) -> SeriesRow:
         r["sort_method"],
         vol,
         r["frame_count"] or 0,
+        r["derived_from_series_uid"],
     )
 
 
@@ -187,6 +212,7 @@ def _instance_from_row(r: sqlite3.Row) -> InstanceRow:
         ps,
         r["path"],
         r["transfer_syntax"],
+        r["sop_class_uid"],
     )
 
 
@@ -246,6 +272,27 @@ def get_series(conn: sqlite3.Connection, series_uid: str) -> SeriesRow | None:
 def list_instances(conn: sqlite3.Connection, series_uid: str) -> list[InstanceRow]:
     rows = conn.execute("SELECT * FROM instance WHERE series_uid=?", (series_uid,))
     return [_instance_from_row(r) for r in rows]
+
+
+def find_derived_series(
+    conn: sqlite3.Connection, parent_series_uid: str, modality: str
+) -> SeriesRow | None:
+    r = conn.execute(
+        "SELECT * FROM series WHERE derived_from_series_uid=? AND modality=?",
+        (parent_series_uid, modality),
+    ).fetchone()
+    return _series_from_row(r) if r else None
+
+
+def set_derived_from(conn: sqlite3.Connection, series_uid: str, parent_uid: str) -> None:
+    conn.execute(
+        "UPDATE series SET derived_from_series_uid=? WHERE series_uid=?",
+        (parent_uid, series_uid),
+    )
+
+
+def delete_instance(conn: sqlite3.Connection, sop_uid: str) -> None:
+    conn.execute("DELETE FROM instance WHERE sop_uid=?", (sop_uid,))
 
 
 def get_instance(conn: sqlite3.Connection, sop_uid: str) -> InstanceRow | None:

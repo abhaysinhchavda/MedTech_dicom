@@ -10,7 +10,14 @@ from app.geometry import sort_instances, volume_info
 from app.ingest.decode import DecodeError, to_uncompressed
 from app.ingest.reader import NotDicomError, read_dicom
 from app.ingest.store import file_instance
-from app.models import IngestSummary, InstanceRow, SeriesRow, SkippedFile, StudyRow
+from app.models import (
+    IngestSummary,
+    InstanceRow,
+    SeriesRow,
+    SkippedFile,
+    StudyRow,
+    VolumeInfo,
+)
 
 
 def _floats2(ds: Dataset, tag: str) -> tuple[float, float] | None:
@@ -53,21 +60,29 @@ def _floats6(ds: Dataset, tag: str) -> tuple[float, float, float, float, float, 
 
 
 def instance_row_from_dataset(ds: Dataset, path: Path) -> InstanceRow:
+    # A Structured Report is a DICOM instance with no pixels, so every
+    # image-only attribute below is optional. Images keep the defaults they
+    # always had; non-image objects get None.
+    is_image = "PixelData" in ds
     return InstanceRow(
         sop_uid=str(ds.SOPInstanceUID),
         series_uid=str(ds.SeriesInstanceUID),
         instance_number=(
             int(ds.InstanceNumber) if ds.get("InstanceNumber") not in (None, "") else None
         ),
-        rows=int(ds.Rows),
-        cols=int(ds.Columns),
-        bits_allocated=int(ds.BitsAllocated),
-        pixel_representation=int(ds.get("PixelRepresentation", 0)),
-        samples_per_pixel=int(ds.get("SamplesPerPixel", 1)),
-        num_frames=int(ds.get("NumberOfFrames", 1) or 1),
+        # Still read strictly for an image: an image with no Rows is malformed
+        # and must raise here so ingest_files skips it with a reason, exactly
+        # as it did before non-image objects existed.
+        rows=int(ds.Rows) if is_image else None,
+        cols=int(ds.Columns) if is_image else None,
+        bits_allocated=int(ds.BitsAllocated) if is_image else None,
+        pixel_representation=int(ds.get("PixelRepresentation", 0)) if is_image else None,
+        samples_per_pixel=int(ds.get("SamplesPerPixel", 1)) if is_image else None,
+        num_frames=int(ds.get("NumberOfFrames", 1) or 1) if is_image else None,
         ipp=_floats3(ds, "ImagePositionPatient"),
         iop=_floats6(ds, "ImageOrientationPatient"),
         pixel_spacing=_floats2(ds, "PixelSpacing"),
+        sop_class_uid=str(ds.get("SOPClassUID", "")) or None,
         path=str(path),
         transfer_syntax=str(ds.file_meta.TransferSyntaxUID),
     )
@@ -116,6 +131,24 @@ def index_instance(conn: sqlite3.Connection, ds: Dataset, path: Path) -> None:
 
 def finalize_series(conn: sqlite3.Connection, series_uid: str) -> SeriesRow:
     rows = repo.list_instances(conn, series_uid)
+    if rows and all(r.rows is None for r in rows):
+        # A non-image series has no geometry to check and no frame to render as
+        # a thumbnail. thumb_sop_uid must stay null: the study browser only
+        # asks for `rendered` when one is set, and `rendered` cannot produce a
+        # PNG from a Structured Report.
+        with conn:
+            repo.update_series_finalized(
+                conn,
+                series_uid,
+                instance_count=len(rows),
+                frame_count=0,
+                thumb_sop_uid=None,
+                sort_method="instance-number",
+                volume=VolumeInfo(False, "structured report, not an image series"),
+            )
+        non_image = repo.get_series(conn, series_uid)
+        assert non_image is not None
+        return non_image
     ordered, method = sort_instances(rows)
     vol = volume_info(ordered, method)
     thumb = ordered[len(ordered) // 2].sop_uid if ordered else None
@@ -128,7 +161,7 @@ def finalize_series(conn: sqlite3.Connection, series_uid: str) -> SeriesRow:
             # frame_count is the number of *frames* and matches volume dims[2]; it is
             # tracked separately so the two are never conflated again.
             instance_count=len(ordered),
-            frame_count=sum(r.num_frames for r in ordered),
+            frame_count=sum(r.num_frames or 0 for r in ordered),
             thumb_sop_uid=thumb,
             sort_method=method,
             volume=vol,
