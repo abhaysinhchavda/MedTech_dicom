@@ -17,6 +17,10 @@ SR_SOP_CLASSES = frozenset(
         "1.2.840.10008.5.1.4.1.1.88.34",
     }
 )
+# A Segmentation carries PixelData, so unlike an SR it passes the image
+# required-tag set unchanged and needs no special case here. It is named only
+# so the indexer can give it an honest reason when the volume check rejects it.
+SEG_SOP_CLASS = "1.2.840.10008.5.1.4.1.1.66.4"
 _UIDS = ("SOPInstanceUID", "SeriesInstanceUID", "StudyInstanceUID")
 REQUIRED_IMAGE = (*_UIDS, "PixelData")
 REQUIRED_SR = (*_UIDS, "ContentSequence")

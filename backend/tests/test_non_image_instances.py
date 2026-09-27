@@ -42,6 +42,56 @@ def make_sr(tmp_path: Path, study_uid: str, series_uid: str) -> Path:
     return path
 
 
+SEGMENTATION_STORAGE = "1.2.840.10008.5.1.4.1.1.66.4"
+
+
+def make_seg(tmp_path: Path, study_uid: str, series_uid: str, frames: int = 4) -> Path:
+    """A minimal multi-frame SEG. Unlike an SR, it HAS PixelData."""
+    import numpy as np
+
+    ds = Dataset()
+    ds.SOPClassUID = SEGMENTATION_STORAGE
+    ds.SOPInstanceUID = generate_uid()
+    ds.SeriesInstanceUID = series_uid
+    ds.StudyInstanceUID = study_uid
+    ds.Modality = "SEG"
+    ds.SeriesNumber = 98
+    ds.InstanceNumber = 1
+    ds.Rows, ds.Columns = 8, 8
+    ds.NumberOfFrames = frames
+    ds.BitsAllocated, ds.BitsStored, ds.HighBit = 8, 8, 7
+    ds.SamplesPerPixel = 1
+    ds.PixelRepresentation = 0
+    ds.PhotometricInterpretation = "MONOCHROME2"
+    ds.PixelData = np.zeros((frames, 8, 8), dtype=np.uint8).tobytes()
+    ds.file_meta = FileMetaDataset()
+    ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+    ds.file_meta.MediaStorageSOPClassUID = ds.SOPClassUID
+    ds.file_meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID
+    path = tmp_path / "seg.dcm"
+    pydicom.dcmwrite(path, ds, enforce_file_format=True)
+    return path
+
+
+def test_seg_is_greyed_with_an_honest_reason(tmp_path: Path, settings: Settings) -> None:
+    conn = connect(settings.db_path)
+    init_schema(conn)
+    study_uid, series_uid = generate_uid(), generate_uid()
+
+    summary = ingest_files(conn, [make_seg(tmp_path, study_uid, series_uid)], settings.store_dir)
+
+    assert summary.accepted == 1
+    series = repo.get_series(conn, series_uid)
+    assert series is not None
+    assert series.modality == "SEG"
+    assert series.volume.is_volume is False
+    # Not "irregular slice spacing": that reason is true of any multi-frame
+    # instance and says nothing about what this object actually is.
+    assert series.volume.reason == "segmentation, not an image series"
+    assert series.thumb_sop_uid is None
+    conn.close()
+
+
 def test_read_dicom_accepts_sr_without_pixeldata(tmp_path: Path) -> None:
     path = make_sr(tmp_path, generate_uid(), generate_uid())
     ds = read_dicom(path)

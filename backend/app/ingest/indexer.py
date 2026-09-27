@@ -8,7 +8,7 @@ from pydicom.dataset import Dataset
 from app import repo
 from app.geometry import sort_instances, volume_info
 from app.ingest.decode import DecodeError, to_uncompressed
-from app.ingest.reader import NotDicomError, read_dicom
+from app.ingest.reader import SEG_SOP_CLASS, NotDicomError, read_dicom
 from app.ingest.store import file_instance
 from app.models import (
     IngestSummary,
@@ -149,6 +149,23 @@ def finalize_series(conn: sqlite3.Connection, series_uid: str) -> SeriesRow:
         non_image = repo.get_series(conn, series_uid)
         assert non_image is not None
         return non_image
+    if rows and all(r.sop_class_uid == SEG_SOP_CLASS for r in rows):
+        # A segmentation is an overlay, never an openable volume. Left to the
+        # geometry check it would be rejected for whatever it happens to lack
+        # first, which is true but tells the user nothing about what it is.
+        with conn:
+            repo.update_series_finalized(
+                conn,
+                series_uid,
+                instance_count=len(rows),
+                frame_count=sum(r.num_frames or 0 for r in rows),
+                thumb_sop_uid=None,
+                sort_method="instance-number",
+                volume=VolumeInfo(False, "segmentation, not an image series"),
+            )
+        seg_series = repo.get_series(conn, series_uid)
+        assert seg_series is not None
+        return seg_series
     ordered, method = sort_instances(rows)
     vol = volume_info(ordered, method)
     thumb = ordered[len(ordered) // 2].sop_uid if ordered else None
