@@ -53,6 +53,10 @@ def make_ct_series(
 ) -> list[Dataset]:
     study_uid = study_uid or generate_uid()
     series_uid = series_uid or generate_uid()
+    # Every slice of a real volume shares one frame of reference. Without it a
+    # series cannot carry SCOORD3D measurements, so leaving it out made the
+    # fixture unrepresentative of the data the viewer actually opens.
+    frame_of_reference_uid = generate_uid()
     iop = ORIENTATIONS[orientation]
     normal = np.cross(iop[:3], iop[3:])
     out: list[Dataset] = []
@@ -66,6 +70,7 @@ def make_ct_series(
         ds.SOPInstanceUID = ds.file_meta.MediaStorageSOPInstanceUID
         ds.StudyInstanceUID = study_uid
         ds.SeriesInstanceUID = series_uid
+        ds.FrameOfReferenceUID = frame_of_reference_uid
         ds.PatientName = "Test^Patient"
         ds.PatientID = "P001"
         ds.StudyDate = "20240101"

@@ -41,8 +41,22 @@ describe('annotation conversion', () => {
     expect(a.data.handles.points).toEqual(item.points);
   });
 
-  test('round trip through the Cornerstone shape is lossless', () => {
-    expect(toWire(fromWire(item))).toEqual(item);
+  test('geometry, identity and label survive the round trip', () => {
+    const back = toWire(fromWire(item))!;
+    expect(back.id).toBe(item.id);
+    expect(back.tool).toBe(item.tool);
+    expect(back.points).toEqual(item.points);
+    expect(back.plane).toEqual(item.plane);
+    expect(back.label).toBeNull();
+  });
+
+  test('a restored annotation carries no stale statistics', () => {
+    // The report persists geometry; Cornerstone recomputes the numbers
+    // against the volume that is actually loaded.
+    const a = fromWire(item);
+    expect(a.invalidated).toBe(true);
+    expect(a.data.cachedStats).toEqual({});
+    expect(toWire(a)?.values).toEqual([]);
   });
 
   test('an annotation from an unsupported tool is dropped rather than sent', () => {
@@ -56,8 +70,8 @@ describe('annotation conversion', () => {
     expect(toWire(fromWire(labelled))?.label).toBe('tumour long axis');
   });
 
-  test('all three elliptical ROI statistics survive the round trip', () => {
-    const roi: MeasurementItem = {
+  test("all three elliptical ROI statistics are read from Cornerstone's cachedStats", () => {
+    const roi = fromWire({
       ...item,
       tool: 'EllipticalROI',
       points: [
@@ -66,14 +80,29 @@ describe('annotation conversion', () => {
         [5, 0, 2],
         [5, 10, 2],
       ],
-      values: [
-        { name: 'Area', value: 78.54, unit: 'mm2' },
-        { name: 'Mean', value: 112.5, unit: '1' },
-        { name: 'StandardDeviation', value: 18.2, unit: '1' },
-      ],
+    });
+    // The key is a real targetId, which is what Cornerstone writes once it has
+    // computed the statistics against the loaded volume.
+    roi.data.cachedStats = {
+      'volumeId:cornerstoneStreamingImageVolume:series-1': {
+        area: 78.54,
+        mean: 112.5,
+        stdDev: 18.2,
+      },
     };
-    const back = toWire(fromWire(roi));
-    expect(back?.values.map((v) => v.name).sort()).toEqual(['Area', 'Mean', 'StandardDeviation']);
+    const back = toWire(roi)!;
+    expect(back.values.map((v) => v.name).sort()).toEqual(['Area', 'Mean', 'StandardDeviation']);
+    expect(back.values.find((v) => v.name === 'Area')).toEqual({
+      name: 'Area',
+      value: 78.54,
+      unit: 'mm2',
+    });
+  });
+
+  test('a length value is read back with millimetre units', () => {
+    const a = fromWire(item);
+    a.data.cachedStats = { 'volumeId:series-1': { length: 22.8 } };
+    expect(toWire(a)?.values).toEqual([{ name: 'Length', value: 22.8, unit: 'mm' }]);
   });
 });
 

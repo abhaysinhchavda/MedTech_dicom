@@ -60,3 +60,40 @@ test('open series, scroll, crosshairs, preset, reopen', async ({ page }) => {
   await expect.poll(() => canvasIsNonBlack(page, 'Axial'), { timeout: 30_000 }).toBe(true);
   expect(errors).toEqual([]);
 });
+
+test('a measurement survives a reload as a stored Structured Report', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+
+  await page.goto('/');
+  await page.getByRole('row', { name: /Test\^Patient/ }).click();
+  await page.getByRole('link', { name: /Synthetic series/ }).click();
+  await expect(page.getByRole('progressbar')).toBeHidden({ timeout: 90_000 });
+  await expect.poll(() => canvasIsNonBlack(page, 'Axial'), { timeout: 30_000 }).toBe(true);
+
+  await page.getByRole('button', { name: /length/i }).click();
+  const box = (await page.getByTestId('panel-Axial').boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.35, box.y + box.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.65, box.y + box.height * 0.5, { steps: 10 });
+  await page.mouse.up();
+
+  const save = page.getByRole('button', { name: /save measurements/i });
+  await expect(save).toBeEnabled({ timeout: 15_000 });
+  await save.click();
+  await expect(page.getByRole('button', { name: /^saved$/i })).toBeVisible({ timeout: 30_000 });
+
+  await page.reload();
+  await expect(page.getByRole('progressbar')).toBeHidden({ timeout: 90_000 });
+  // The download link only renders once the backend has reported an srSopUid
+  // on a fresh GET, which means it wrote a real DICOM SR, indexed it as its
+  // own series, and parsed it back. That is the whole round trip in one
+  // assertion.
+  const link = page.getByRole('link', { name: /download report/i });
+  await expect(link).toBeVisible({ timeout: 30_000 });
+  // And the report comes back as a DICOM object over WADO-RS.
+  const href = await link.getAttribute('href');
+  expect((await page.request.get(href!)).status()).toBe(200);
+
+  expect(errors).toEqual([]);
+});

@@ -61,16 +61,16 @@ const firstStats = (a: WireAnnotation): Record<string, number> =>
   Object.values(a.data.cachedStats ?? {})[0] ?? {};
 
 export function fromWire(item: MeasurementItem, frameOfReferenceUID = ''): WireAnnotation {
-  const keys = STAT_KEYS[item.tool];
-  const stats: Record<string, number> = {};
-  for (const v of item.values) {
-    const key = keys[v.name];
-    if (key) stats[key] = v.value;
-  }
   return {
     annotationUID: item.id,
     highlighted: false,
-    invalidated: false,
+    // The report persists geometry, not statistics. `invalidated` makes
+    // Cornerstone recompute length, angle and ROI values against the volume
+    // that is actually loaded, which is both more truthful than replaying
+    // stored numbers and the only way to avoid fabricating a cachedStats key:
+    // those keys must be a real targetId ("volumeId:..."), and anything else
+    // makes getTargetIdImage throw on the first render.
+    invalidated: true,
     isLocked: false,
     isVisible: true,
     metadata: {
@@ -85,9 +85,7 @@ export function fromWire(item: MeasurementItem, frameOfReferenceUID = ''): WireA
     data: {
       ...(item.label ? { label: item.label } : {}),
       handles: { points: item.points, activeHandleIndex: null },
-      // The key is arbitrary on load; Cornerstone recomputes it against the
-      // real volume id on the first render.
-      cachedStats: { restored: stats },
+      cachedStats: {},
     },
   };
 }

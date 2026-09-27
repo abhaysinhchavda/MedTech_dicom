@@ -2,8 +2,12 @@ import { init as coreInit } from '@cornerstonejs/core';
 import {
   init as toolsInit,
   addTool,
+  AngleTool,
   CrosshairsTool,
+  EllipticalROITool,
+  LengthTool,
   PanTool,
+  ProbeTool,
   StackScrollTool,
   TrackballRotateTool,
   WindowLevelTool,
@@ -44,6 +48,9 @@ export function initCornerstone(): Promise<void> {
     window.addEventListener('unhandledrejection', (e) => {
       if (e.reason instanceof XMLHttpRequest) e.preventDefault();
     });
+    // Cornerstone keeps a global tool registry separate from tool groups. A
+    // group's addTool(name) silently does nothing for a tool that was never
+    // registered here, so every tool the app uses has to appear in this list.
     for (const T of [
       WindowLevelTool,
       PanTool,
@@ -51,6 +58,10 @@ export function initCornerstone(): Promise<void> {
       StackScrollTool,
       CrosshairsTool,
       TrackballRotateTool,
+      LengthTool,
+      AngleTool,
+      ProbeTool,
+      EllipticalROITool,
     ])
       addTool(T);
   })();
