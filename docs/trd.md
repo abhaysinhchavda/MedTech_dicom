@@ -16,8 +16,14 @@ Measurements on the MPR planes (length, angle, probe, elliptical ROI, and
 bidirectional long/short axis), persisted as a DICOM Structured Report stored
 beside the images.
 
-**Out:** segmentation, surface rendering, hanging protocols, authentication,
-multi-user, hosting, STOW-RS, PHI handling beyond "samples are anonymised".
+Hand-painted segmentation on the MPR planes, several labelled segments per
+series, persisted as a BINARY DICOM Segmentation object stored beside the
+images.
+
+**Out:** surface rendering of a segment, automatic or model-driven
+segmentation, reading a third-party Segmentation object, hanging protocols,
+authentication, multi-user, hosting, STOW-RS, PHI handling beyond "samples are
+anonymised".
 
 ## 2. Platform
 
@@ -51,6 +57,9 @@ multi-user, hosting, STOW-RS, PHI handling beyond "samples are anonymised".
 | F17 | Store a measurement set as a Comprehensive 3D SR in its own series, round-tripped on reopen | `app/sr/*`, `api/measurements.py` | `test_sr_build_parse.py`, `test_measurements_api.py`, e2e |
 | F18 | Compute length and angle from the stored coordinates, so the report is self-consistent | `app/sr/validate.py` | `test_sr_validate.py`, `test_measurements_api.py` |
 | F19 | Hold non-image DICOM instances in the store without breaking image paths | `ingest/reader.py`, `ingest/indexer.py` | `test_non_image_instances.py` |
+| F20 | Paint and erase segments on the MPR planes with a brush, several labelled segments per series, segment 0 erasing | `cornerstone/segmentation.ts`, `hooks/useSegmentation.ts`, `Toolbar.tsx` | `segmentation.test.ts`, `useSegmentation.test.tsx`, `Toolbar.test.tsx`, e2e |
+| F21 | Store a painted mask as a BINARY Segmentation in its own series, round-tripped on reopen, saved independently of the report | `app/segmentation/*`, `api/segmentations.py` | `test_seg_build_parse.py`, `test_segmentations_api.py`, e2e |
+| F22 | Carry the label volume between client and store as raw bytes in the volume's own index order, one uint8 per voxel | `app/segmentation/mask.py`, `api/segmentation.ts` | `test_seg_mask.py`, `test_segmentations_api.py` |
 
 ## 4. Non-functional requirements
 
@@ -66,7 +75,10 @@ multi-user, hosting, STOW-RS, PHI handling beyond "samples are anonymised".
 | N8 | Test output must be pristine | Zero warnings in both suites; third-party deprecations filtered by exact match, never blanket |
 | N9 | A report that cannot be read must never stop the series opening | `GET` returns an empty set with `parseError`; the viewer shows a non-blocking notice |
 | N10 | A concurrent save must not silently overwrite another client's work | Optimistic `srSopUid` check, 409 on mismatch |
-| N11 | A half-finished save must not lose the only copy | Write the new report and index it before deleting the previous one; the newest instance wins on read |
+| N11 | A half-finished save must not lose the only copy | Write the new report and index it before deleting the previous one; the newest instance wins on read. The same ordering, and the same newest-wins read, protect the segmentation |
+| N12 | A segmentation that cannot be read must never stop the series opening | `GET` returns no segments with `parseError`; `labelmap` answers 404; the viewer shows a non-blocking notice, and painting replaces the unreadable object |
+| N13 | A mask must never be silently misaligned with its images | The wire bytes are a reshape of the volume's own index order, never a transpose; the byte count is checked against the series' dims on both sides; the SEG's frames are mapped back by source SOP Instance UID, and a missing frame must be provably empty |
+| N14 | Clearing every voxel must remove the object, not store an empty one | An all-zero labelmap deletes the stored Segmentation and its series instead of writing a SEG with no segments |
 
 ## 5. Interfaces
 
@@ -77,6 +89,11 @@ GET  /api/series/{series_uid}/volume-info          → {seriesUid,isVolume,reaso
 GET  /api/series/{series_uid}/measurements         → {seriesUid,frameOfReferenceUid,srSeriesUid,
                                                       srSopUid,parseError,measurements[]}
 PUT  /api/series/{series_uid}/measurements         → same envelope, with the new srSopUid
+GET  /api/series/{series_uid}/segmentation         → {seriesUid,frameOfReferenceUid,dims,segSeriesUid,
+                                                      segSopUid,parseError,segments[]}
+PUT  /api/series/{series_uid}/segmentation         (multipart: `meta` JSON + `labelmap` octet-stream)
+                                                   → same envelope, with the new segSopUid
+GET  /api/series/{series_uid}/segmentation/labelmap → application/octet-stream, nx*ny*nz uint8
 POST /api/upload            (multipart, field `files`, repeated)
                                                    → {accepted,skipped:[{file,reason}],studyUids}
 GET  /dicomweb/studies[?PatientName&PatientID&StudyDate&limit&offset]      → application/dicom+json
@@ -88,21 +105,25 @@ GET  /dicomweb/studies/{study}/series/{series}/instances/{sop}/frames/{n}  → m
 GET  /dicomweb/studies/{study}/series/{series}/instances/{sop}/rendered?viewport=W,H → image/png
 ```
 
-Errors: `400` unsafe zip entry · `404` unknown UID or frame out of range ·
-`413` over the size budget · `422` malformed query parameter. Bodies are `{detail}`.
+Errors: `400` unsafe zip entry · `404` unknown UID, frame out of range, or no
+stored segmentation · `409` the stored object moved under a concurrent save ·
+`413` over the size budget · `422` malformed query parameter, malformed
+segment, a labelmap whose length disagrees with the series' dims, a voxel value
+no segment declares, or a series that is not a volume. Bodies are `{detail}`.
 
 **Storage:** `data/store/<StudyUID>/<SeriesUID>/<SOPUID>.dcm` plus
 `data/store/index.sqlite` (`study` · `series` · `instance`). Both git-ignored.
 
 ## 6. Verification
 
-`scripts/test.ps1` → **127 backend tests** (pytest) + 3 script tests + ruff +
-mypy + **55 frontend tests** (vitest), exit 0, no warnings.
-`cd frontend; npm run e2e` → **2 Playwright tests**: the first seeds a
+`scripts/test.ps1` → **151 backend tests** (pytest) + 3 script tests + ruff +
+mypy + **72 frontend tests** (vitest), exit 0, no warnings.
+`cd frontend; npm run e2e` → **3 Playwright tests**: the first seeds a
 synthetic 40-slice series, opens it, and asserts four non-blank canvases,
-scroll, crosshair sync, preset change and reopen; the second draws a length,
-saves it, reloads the page, and asserts the report comes back over WADO-RS.
-No network, no sample data.
+scroll, crosshair sync, preset change and reopen; the second paints with the
+brush, saves, reloads the page, and asserts the labelmap comes back out of the
+store with a non-zero voxel count; the third draws a length, saves it, reloads,
+and asserts the report comes back over WADO-RS. No network, no sample data.
 
 **Sample data:** two brain MR series from TCIA UPENN-GBM patient
 `UPENN-GBM-00041` — T1 MPRAGE (160 slices, transcoded to JPEG 2000 Lossless so
@@ -138,3 +159,24 @@ CC BY 4.0, fetched and verified by `scripts/fetch_samples.py` against
 - A restored measurement carries geometry only. Cornerstone recomputes its
   numbers against the loaded volume, so a value shown after a reload is
   derived afresh rather than replayed from the report.
+- Segmentations are BINARY only. A FRACTIONAL or LABELMAP object, and any
+  Segmentation this application did not write, is reported as unreadable rather
+  than partially interpreted — the same rule the report follows.
+- A segment has no surface. The mask is drawn as a labelmap overlay on the
+  three MPR planes and nothing is added to the 3D viewport, where a labelmap
+  would render nothing useful.
+- The brush paints in world space, so a single stroke can touch neighbouring
+  slices rather than only the plane under the cursor. That is Cornerstone's
+  own behaviour and it is what a radiologist painting a volume expects, but it
+  means the mask is not editable slice-by-slice in the strict sense.
+- Segment category and type are fixed to a small coded vocabulary
+  (Morphologically Abnormal Structure, with Neoplasm or Neoplasm Primary); the
+  backend rejects a code it cannot map rather than writing an uncoded segment.
+- Writing a Segmentation reads every source instance's header to satisfy
+  highdicom's patient and study attribute requirements, so a save costs one
+  header read per slice. On the 160-slice sample that is the dominant cost of
+  the request.
+- Time-to-first-paint grows with every viewer mounted in one browser process
+  under the software rasteriser the e2e suite uses, because the GPU process
+  reclaims a closed page's WebGL resources lazily. The suite budgets 90s per
+  panel for it; on real hardware it is immediate.

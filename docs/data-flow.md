@@ -1,6 +1,7 @@
 # Data Flow — DICOM 3D Brain Viewer
 
-Three flows: files in, series list out, volume on screen.
+Five flows: files in, series list out, volume on screen, measurements to a
+report and back, and a painted mask to a Segmentation and back.
 
 ## 1. Ingest — DICOM file → indexed volume
 
@@ -135,6 +136,60 @@ Reopening the series
 the old one is deleted. A crash in between leaves two reports, of which the
 newest wins and the other is inert; the reverse order could lose the only copy.
 
+## 5. Segment - painted labelmap to a Segmentation object and back
+
+```
+Toolbar Brush + Segment select ──▶ left-drag on an MPR viewport
+        │  Cornerstone paints into a derived labelmap volume, one uint8 per
+        │  voxel, and fires SEGMENTATION_DATA_MODIFIED on its global eventTarget
+        ▼
+useSegmentation marks the mask dirty ──▶ Save segmentation enables
+        │  readLabelmap: voxelManager.getCompleteScalarDataArray() -> Uint8Array
+        ▼
+PUT /api/series/{uid}/segmentation   multipart: meta JSON + labelmap bytes
+        │
+        ├─ series is a volume?                           -> 422 with the reason
+        ├─ validate: byte count == nx*ny*nz, segment numbers positive and
+        │            unique, tracking uid is a legal DICOM UID, every
+        │            non-zero voxel value is declared                 -> 422
+        ├─ every voxel zero?  -> delete the stored SEG and its series, return
+        │                        an envelope with no segSopUid
+        ├─ segSopUid still current?                      -> 409 if not
+        ├─ mask.labels_from_bytes: reshape to (nz, ny, nx). A reshape, never a
+        │  transpose - the wire order is index = x + y*nx + z*nx*ny
+        ├─ mask.split_segments: one boolean plane stack per segment number
+        ├─ segmentation/build.py: Segmentation, BINARY, omit_empty_frames,
+        │  coded category/type per segment, source images prepared so
+        │  highdicom finds the patient and study attributes it requires
+        ├─ store.file_instance -> data/store/<study>/<seg-series>/<sop>.dcm
+        ├─ index_instance + finalize_series  (SEG takes the ordinary image
+        │  path - it has PixelData - and is excluded from the browser by its
+        │  SOP Class, reason "segmentation, not an image series")
+        └─ delete the previous SEG: file, then row
+        ▼
+      new segSopUid; dirty clears
+```
+
+```
+Reopening the series
+  useSegmentation ── GET /api/series/{uid}/segmentation      (segments + dims)
+                  └─ GET /api/series/{uid}/segmentation/labelmap   (raw bytes)
+        │  repo: series WHERE derived_from_series_uid = uid AND modality = 'SEG'
+        │  newest instance wins  ──▶ segmentation/parse.py
+        │      get_pixels_by_source_instance(..., combine_segments=True,
+        │      relabel=False, assert_missing_frames_are_empty=True)
+        │      frames re-associated by source SOP Instance UID, so a SEG that
+        │      omitted its empty frames still lands on the right planes
+        ▼
+  segmentation.ts: createLabelmap (derived from the image volume) ->
+  fillLabelmap (setCompleteScalarDataArray, bytes unchanged) ->
+  showSegmentation on the three MPR viewports only
+```
+
+**The mask and the report save independently.** Two dirty flags, two buttons,
+two stored objects in two derived series. Painting never marks a measurement
+dirty and vice versa, so neither save can clobber the other's work.
+
 ## Error paths
 
 | Where | Behaviour |
@@ -148,3 +203,8 @@ newest wins and the other is inert; the reverse order could lose the only copy.
 | Report unreadable | Empty set plus `parseError`; the viewer still opens, with a non-blocking notice |
 | Report changed elsewhere | `409`; the save is refused and the set stays dirty |
 | Series has no frame of reference | Measurement tools disabled, with the reason on hover |
+| Segmentation unreadable | No segments plus `parseError`, `labelmap` answers `404`; the series still opens, with a non-blocking notice, and painting replaces the object |
+| Segmentation changed elsewhere | `409`; the save is refused and the mask stays dirty |
+| Labelmap length disagrees with the series' dims | `422` naming both the expected and the received byte count |
+| A voxel value no segment declares | `422`; a mask is never stored with a label nothing describes |
+| Series is not a volume | Brush, segment select and save disabled, with the reason on hover; `PUT` also refuses with `422` |

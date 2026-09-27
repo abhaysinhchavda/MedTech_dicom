@@ -66,9 +66,10 @@ stated reason rather than failing the upload.
 cd frontend; npm run e2e    # Playwright: loads a synthetic series and drives the viewer
 ```
 
-127 backend tests, 55 frontend tests, 2 end-to-end tests. The e2e tests start their
+151 backend tests, 72 frontend tests, 3 end-to-end tests. The e2e tests start their
 own backend against a synthetic DICOM series, so they need no sample data and no
-network. The second one draws a measurement, saves it, reloads, and checks the
+network. One paints with the brush, saves, reloads, and checks the mask comes back
+out of the store; another draws a measurement, saves, reloads, and checks the
 Structured Report comes back.
 
 ## DICOM standards implemented
@@ -87,6 +88,12 @@ Structured Report comes back.
   WADO-RS and parsed back when the series is reopened. Coordinates are SCOORD3D
   in patient space, so a measurement made on a reformatted plane does not have
   to pretend it belongs to a stored image.
+- **Segmentation (BINARY)** — a mask painted in the browser is stored as a DICOM
+  Segmentation object in the study, indexed as its own series, and parsed back
+  when the series is reopened. Segments carry coded category and type, empty
+  frames are omitted, and frames are re-associated on read by source SOP
+  Instance UID rather than by position, so an omitted frame still lands on the
+  right plane.
 - **Slice geometry** — anatomical ordering by the projection of `ImagePositionPatient`
   onto the slice normal derived from `ImageOrientationPatient`, with documented
   fallbacks.
@@ -117,10 +124,15 @@ Measurements are included: length, angle, probe, elliptical ROI and
 bidirectional (the RECIST long/short axis pair) on the MPR planes, saved into
 the study as a DICOM Structured Report rather than a private format.
 
-Not included: segmentation, surface (mesh) rendering, hanging protocols,
-authentication, or hosting. It runs locally.
+Segmentation is included: paint segments with a brush on the MPR planes, several
+labelled segments per series, saved into the study as a BINARY DICOM
+Segmentation object. Both are saved independently of each other.
+
+Not included: surface (mesh) rendering of a segment, automatic segmentation,
+reading Segmentation or Structured Report objects written by other systems,
+hanging protocols, authentication, or hosting. It runs locally.
 
 ## Roadmap
 
-Labelmap segmentation · marching-cubes surface export · reading Structured
-Reports written by other systems.
+Marching-cubes surface export of a segment · reading Structured Reports and
+Segmentations written by other systems · FRACTIONAL segmentations.
