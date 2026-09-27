@@ -1,18 +1,29 @@
 import {
+  AngleTool,
   CrosshairsTool,
+  EllipticalROITool,
   Enums,
+  LengthTool,
   PanTool,
+  ProbeTool,
   StackScrollTool,
   ToolGroupManager,
   TrackballRotateTool,
   WindowLevelTool,
   ZoomTool,
 } from '@cornerstonejs/tools';
+import type { ToolName } from '../api/types';
 import { MPR_IDS, VIEWPORT_IDS } from './viewports';
 
 export const MPR_TOOL_GROUP = 'mpr';
 export const VOL_TOOL_GROUP = 'vol3d';
 const { MouseBindings, KeyboardBindings } = Enums;
+
+export type MprTool = 'crosshairs' | 'windowLevel' | ToolName;
+
+// Measurement tools go on the MPR group only. The 3D volume viewport has no
+// in-plane geometry to measure against.
+const MEASURE_TOOLS = [LengthTool, AngleTool, ProbeTool, EllipticalROITool];
 const LINE_COLORS: Record<string, string> = {
   [VIEWPORT_IDS.axial]: 'rgb(200, 0, 0)',
   [VIEWPORT_IDS.sagittal]: 'rgb(200, 200, 0)',
@@ -48,7 +59,8 @@ export function createToolGroups(engineId: string): void {
   mpr.setToolActive(StackScrollTool.toolName, {
     bindings: [{ mouseButton: MouseBindings.Wheel }],
   });
-  setCrosshairsActive(true);
+  for (const Tool of MEASURE_TOOLS) mpr.addTool(Tool.toolName);
+  setActiveMprTool('crosshairs');
 
   const vol = ToolGroupManager.createToolGroup(VOL_TOOL_GROUP)!;
   vol.addViewport(VIEWPORT_IDS.volume3d, engineId);
@@ -66,20 +78,27 @@ export function createToolGroups(engineId: string): void {
   });
 }
 
-export function setCrosshairsActive(on: boolean): void {
+const PRIMARY = [{ mouseButton: MouseBindings.Primary }];
+
+/**
+ * Exactly one tool owns left-drag at a time.
+ *
+ * Everything else that could own it is set passive, so existing annotations
+ * still render and can be grabbed by their handles. Crosshairs is the
+ * exception and is disabled outright, because its reference lines stay
+ * interactive while passive and would swallow the drag.
+ */
+export function setActiveMprTool(tool: MprTool): void {
   const mpr = ToolGroupManager.getToolGroup(MPR_TOOL_GROUP);
   if (!mpr) return;
-  if (on) {
-    mpr.setToolPassive(WindowLevelTool.toolName);
-    mpr.setToolActive(CrosshairsTool.toolName, {
-      bindings: [{ mouseButton: MouseBindings.Primary }],
-    });
-  } else {
-    mpr.setToolDisabled(CrosshairsTool.toolName);
-    mpr.setToolActive(WindowLevelTool.toolName, {
-      bindings: [{ mouseButton: MouseBindings.Primary }],
-    });
-  }
+  mpr.setToolDisabled(CrosshairsTool.toolName);
+  mpr.setToolPassive(WindowLevelTool.toolName);
+  for (const Tool of MEASURE_TOOLS) mpr.setToolPassive(Tool.toolName);
+
+  if (tool === 'crosshairs') mpr.setToolActive(CrosshairsTool.toolName, { bindings: PRIMARY });
+  else if (tool === 'windowLevel')
+    mpr.setToolActive(WindowLevelTool.toolName, { bindings: PRIMARY });
+  else mpr.setToolActive(tool, { bindings: PRIMARY });
 }
 
 export function destroyToolGroups(): void {

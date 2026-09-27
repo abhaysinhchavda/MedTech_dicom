@@ -60,6 +60,27 @@ export const handlers = [
     ),
   ),
   http.get(`${API}/api/series/${SERIES}/volume-info`, () => HttpResponse.json(volumeInfoJson)),
+  http.get(`${API}/api/series/${SERIES}/measurements`, () =>
+    HttpResponse.json({
+      seriesUid: SERIES,
+      frameOfReferenceUid: '1.2.9',
+      srSeriesUid: null,
+      srSopUid: null,
+      parseError: null,
+      measurements: [],
+    }),
+  ),
+  http.put(`${API}/api/series/${SERIES}/measurements`, async ({ request }) => {
+    const body = (await request.json()) as { measurements: unknown[] };
+    return HttpResponse.json({
+      seriesUid: SERIES,
+      frameOfReferenceUid: '1.2.9',
+      srSeriesUid: '1.2.9.1',
+      srSopUid: '1.2.9.2',
+      parseError: null,
+      measurements: body.measurements,
+    });
+  }),
   // Actually reads the multipart body instead of returning a fixed payload,
   // so a broken FormData/File serialization (the jsdom bug vitest.setup.ts
   // works around by swapping in undici) fails this handler's own assertions

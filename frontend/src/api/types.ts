@@ -44,6 +44,37 @@ export interface VolumeInfo {
   instanceCount: number;
   estimatedBytes: number | null;
 }
+export type ToolName = 'Length' | 'Angle' | 'Probe' | 'EllipticalROI';
+export interface MeasurementValue {
+  name: string;
+  value: number;
+  unit: string;
+}
+export interface Plane {
+  normal: [number, number, number];
+  up: [number, number, number];
+}
+export interface MeasurementItem {
+  /**
+   * A DICOM UID, not a UUID. It is stored as the Tracking Unique Identifier,
+   * whose value representation is UI, so the backend rejects anything that is
+   * not dot-separated digits. See `toWire` in cornerstone/annotations.ts.
+   */
+  id: string;
+  tool: ToolName;
+  points: [number, number, number][];
+  plane: Plane;
+  values: MeasurementValue[];
+  label: string | null;
+}
+export interface MeasurementSet {
+  seriesUid: string;
+  frameOfReferenceUid: string | null;
+  srSeriesUid: string | null;
+  srSopUid: string | null;
+  parseError: string | null;
+  measurements: MeasurementItem[];
+}
 export interface UploadSummary {
   accepted: number;
   skipped: { file: string; reason: string }[];
