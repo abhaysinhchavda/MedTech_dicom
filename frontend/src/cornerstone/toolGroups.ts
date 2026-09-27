@@ -1,5 +1,6 @@
 import {
   AngleTool,
+  BidirectionalTool,
   CrosshairsTool,
   EllipticalROITool,
   Enums,
@@ -23,7 +24,7 @@ export type MprTool = 'crosshairs' | 'windowLevel' | ToolName;
 
 // Measurement tools go on the MPR group only. The 3D volume viewport has no
 // in-plane geometry to measure against.
-const MEASURE_TOOLS = [LengthTool, AngleTool, ProbeTool, EllipticalROITool];
+const MEASURE_TOOLS = [LengthTool, AngleTool, ProbeTool, EllipticalROITool, BidirectionalTool];
 const LINE_COLORS: Record<string, string> = {
   [VIEWPORT_IDS.axial]: 'rgb(200, 0, 0)',
   [VIEWPORT_IDS.sagittal]: 'rgb(200, 200, 0)',

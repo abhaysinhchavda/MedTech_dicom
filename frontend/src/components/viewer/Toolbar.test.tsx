@@ -32,6 +32,8 @@ test('CT toolbar exposes presets and fires callbacks', async () => {
   expect(p.onVolumePreset).toHaveBeenCalledWith('CT-Soft-Tissue');
   await userEvent.click(screen.getByRole('button', { name: /length/i }));
   expect(p.onTool).toHaveBeenCalledWith('Length');
+  await userEvent.click(screen.getByRole('button', { name: /bidirectional/i }));
+  expect(p.onTool).toHaveBeenCalledWith('Bidirectional');
   await userEvent.click(screen.getByRole('button', { name: /invert/i }));
   expect(p.onInvert).toHaveBeenCalled();
   await userEvent.click(screen.getByRole('button', { name: /reset/i }));
@@ -53,6 +55,7 @@ test('measurement modes are disabled when the series cannot be measured', () => 
   render(<Toolbar {...baseProps()} canMeasure={false} />);
   expect(screen.getByRole('button', { name: /length/i })).toBeDisabled();
   expect(screen.getByRole('button', { name: /ellipse/i })).toBeDisabled();
+  expect(screen.getByRole('button', { name: /bidirectional/i })).toBeDisabled();
   // Navigation is never blocked: the images are still readable.
   expect(screen.getByRole('button', { name: /crosshairs/i })).toBeEnabled();
   expect(screen.getByRole('button', { name: /^window$/i })).toBeEnabled();

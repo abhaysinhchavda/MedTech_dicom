@@ -44,7 +44,7 @@ export interface VolumeInfo {
   instanceCount: number;
   estimatedBytes: number | null;
 }
-export type ToolName = 'Length' | 'Angle' | 'Probe' | 'EllipticalROI';
+export type ToolName = 'Length' | 'Angle' | 'Probe' | 'EllipticalROI' | 'Bidirectional';
 export interface MeasurementValue {
   name: string;
   value: number;

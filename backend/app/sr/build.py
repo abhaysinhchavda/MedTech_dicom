@@ -21,6 +21,8 @@ VALUE_CODES: dict[str, Code] = {
     "Area": codes.SCT.Area,
     "Mean": codes.SCT.Mean,
     "StandardDeviation": codes.SCT.StandardDeviation,
+    "LongAxis": codes.SCT.LongAxis,
+    "ShortAxis": codes.SCT.ShortAxis,
 }
 UNIT_CODES: dict[str, Code] = {
     "mm": codes.UCUM.Millimeter,
@@ -36,7 +38,12 @@ GRAPHIC_TYPES: dict[str, hd.sr.GraphicTypeValues3D] = {
     "Length": hd.sr.GraphicTypeValues3D.POLYLINE,
     "Angle": hd.sr.GraphicTypeValues3D.POLYLINE,
     "EllipticalROI": hd.sr.GraphicTypeValues3D.ELLIPSE,
+    "Bidirectional": hd.sr.GraphicTypeValues3D.POLYLINE,
 }
+# Bidirectional is the only tool whose values have geometry of their own: each
+# axis gets its own 2-point POLYLINE, so a reader that takes a NUM and the
+# SCOORD3D beside it finds them describing the same segment.
+AXIS_SPANS: dict[str, slice] = {"LongAxis": slice(0, 2), "ShortAxis": slice(2, 4)}
 
 # The view plane a measurement was drawn on has no slot in TID 1500. These
 # concepts carry it as extra NUM content items inside the measurement group,
@@ -117,13 +124,10 @@ def _group(item: MeasurementItem, frame_of_reference_uid: str) -> Any:
             ],
         )
     else:
-        # A point, line or angle: the geometry is attached to the measurement
-        # itself as referenced coordinates, nested under the NUM item.
-        coords = hd.sr.CoordinatesForMeasurement3D(
-            graphic_type=graphic_type,
-            graphic_data=data,
-            frame_of_reference_uid=frame_of_reference_uid,
-        )
+        # A point, line, angle or axis pair: the geometry is attached to the
+        # measurement itself as referenced coordinates, nested under the NUM
+        # item. Bidirectional slices the 4 points into one segment per axis;
+        # every other tool's single value owns all of them.
         group = hd.sr.MeasurementsAndQualitativeEvaluations(
             tracking_identifier=tracking,
             measurements=[
@@ -131,7 +135,15 @@ def _group(item: MeasurementItem, frame_of_reference_uid: str) -> Any:
                     name=VALUE_CODES[v.name],
                     value=float(v.value),
                     unit=UNIT_CODES[v.unit],
-                    referenced_coordinates=[coords],
+                    referenced_coordinates=[
+                        hd.sr.CoordinatesForMeasurement3D(
+                            graphic_type=graphic_type,
+                            graphic_data=(
+                                data[AXIS_SPANS[v.name]] if item.tool == "Bidirectional" else data
+                            ),
+                            frame_of_reference_uid=frame_of_reference_uid,
+                        )
+                    ],
                 )
                 for v in item.values
             ],

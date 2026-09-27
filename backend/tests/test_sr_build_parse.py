@@ -133,8 +133,37 @@ def ellipse_item() -> MeasurementItem:
     )
 
 
+def bidirectional_item() -> MeasurementItem:
+    return MeasurementItem(
+        id="2.25.100000000000000000000000000000005",
+        tool="Bidirectional",
+        # Long axis first, then the short axis: 20 mm by 10 mm.
+        points=[
+            (0.0, 0.0, 3.0),
+            (20.0, 0.0, 3.0),
+            (10.0, -5.0, 3.0),
+            (10.0, 5.0, 3.0),
+        ],
+        plane=Plane(normal=(0.0, 0.0, 1.0), up=(0.0, -1.0, 0.0)),
+        values=[
+            MeasurementValue(name="LongAxis", value=20.0, unit="mm"),
+            MeasurementValue(name="ShortAxis", value=10.0, unit="mm"),
+        ],
+        label=None,
+    )
+
+
+def test_bidirectional_writes_one_scoord_per_axis() -> None:
+    # The only tool with two: each NUM has to sit beside the segment it
+    # measures, or a reader cannot tell which number belongs to which axis.
+    ds = build_one(bidirectional_item())
+    assert str(ds).count("SCOORD3D") == 2
+
+
 @pytest.mark.parametrize(
-    "factory", [length_item, angle_item, probe_item, ellipse_item], ids=lambda f: f.__name__
+    "factory",
+    [length_item, angle_item, probe_item, ellipse_item, bidirectional_item],
+    ids=lambda f: f.__name__,
 )
 def test_every_tool_round_trips_unchanged(factory) -> None:  # type: ignore[no-untyped-def]
     item = factory()
@@ -147,8 +176,9 @@ def test_graphic_types_match_the_contract() -> None:
         "Length": "POLYLINE",
         "Angle": "POLYLINE",
         "EllipticalROI": "ELLIPSE",
+        "Bidirectional": "POLYLINE",
     }
-    for factory in (length_item, angle_item, probe_item, ellipse_item):
+    for factory in (length_item, angle_item, probe_item, ellipse_item, bidirectional_item):
         item = factory()
         assert expected[item.tool] in str(build_one(item)), item.tool
 

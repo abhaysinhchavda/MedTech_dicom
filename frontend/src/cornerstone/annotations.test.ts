@@ -99,6 +99,27 @@ describe('annotation conversion', () => {
     });
   });
 
+  test("both bidirectional axes are read from Cornerstone's cachedStats", () => {
+    const bi = fromWire({
+      ...item,
+      tool: 'Bidirectional',
+      points: [
+        [0, 0, 3],
+        [20, 0, 3],
+        [10, -5, 3],
+        [10, 5, 3],
+      ],
+    });
+    // BidirectionalTool calls the long axis `length` and the short axis `width`.
+    bi.data.cachedStats = {
+      'volumeId:cornerstoneStreamingImageVolume:series-1': { length: 20, width: 10 },
+    };
+    expect(toWire(bi)?.values).toEqual([
+      { name: 'LongAxis', value: 20, unit: 'mm' },
+      { name: 'ShortAxis', value: 10, unit: 'mm' },
+    ]);
+  });
+
   test('a length value is read back with millimetre units', () => {
     const a = fromWire(item);
     a.data.cachedStats = { 'volumeId:series-1': { length: 22.8 } };

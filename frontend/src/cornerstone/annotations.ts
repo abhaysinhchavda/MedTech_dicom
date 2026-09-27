@@ -1,7 +1,7 @@
 import { annotation } from '@cornerstonejs/tools';
 import type { MeasurementItem, MeasurementValue, ToolName } from '../api/types';
 
-const TOOLS: ToolName[] = ['Length', 'Angle', 'Probe', 'EllipticalROI'];
+const TOOLS: ToolName[] = ['Length', 'Angle', 'Probe', 'EllipticalROI', 'Bidirectional'];
 
 // Cornerstone stores each tool's results under `cachedStats`, keyed by a
 // string that embeds the volume id, with a different shape per tool. These
@@ -12,6 +12,9 @@ const STAT_KEYS: Record<ToolName, Record<string, string>> = {
   Angle: { Angle: 'angle' },
   Probe: { Mean: 'value' },
   EllipticalROI: { Area: 'area', Mean: 'mean', StandardDeviation: 'stdDev' },
+  // BidirectionalTool names its two axes `length` and `width`, not
+  // `longAxis`/`shortAxis`.
+  Bidirectional: { LongAxis: 'length', ShortAxis: 'width' },
 };
 const UNITS: Record<string, string> = {
   Length: 'mm',
@@ -19,6 +22,8 @@ const UNITS: Record<string, string> = {
   Area: 'mm2',
   Mean: '1',
   StandardDeviation: '1',
+  LongAxis: 'mm',
+  ShortAxis: 'mm',
 };
 
 const DICOM_UID = /^[0-9]+(\.[0-9]+)*$/;

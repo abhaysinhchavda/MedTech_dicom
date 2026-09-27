@@ -9,9 +9,10 @@ from app.sr.models import MeasurementItem, MeasurementValue, Plane, Point3
 
 CODE_TO_VALUE_NAME = {c.value: name for name, c in VALUE_CODES.items()}
 CODE_TO_UNIT = {c.value: name for name, c in UNIT_CODES.items()}
-# POLYLINE is shared by Length and Angle; the point count separates them,
-# which is why the wire contract fixes a count per tool.
+# POLYLINE is shared by Length, Angle and Bidirectional; the point count
+# separates them, which is why the wire contract fixes a count per tool.
 GRAPHIC_TO_TOOL = {"POINT": "Probe", "ELLIPSE": "EllipticalROI"}
+POLYLINE_TOOLS = {2: "Length", 3: "Angle", 4: "Bidirectional"}
 MEASUREMENT_GROUP = "125007"  # DCM, Measurement Group
 TRACKING_ID = "112039"
 TRACKING_UID = "112040"
@@ -109,10 +110,22 @@ def _tracking(items: list[Dataset]) -> tuple[str, str | None]:
 
 
 def _scoord(items: list[Dataset]) -> tuple[str, list[Point3]]:
+    """Graphic type and every SCOORD3D's points, concatenated in document order.
+
+    Every tool but Bidirectional writes exactly one SCOORD3D per group;
+    Bidirectional writes one per axis, and joining them end to end is what
+    yields the 4-point list its wire contract fixes.
+    """
+    graphic_type: str | None = None
+    points: list[Point3] = []
     for item in items:
-        if item.ValueType == "SCOORD3D":
-            return str(item.GraphicType), _triples([float(v) for v in item.GraphicData])
-    raise SrParseError("measurement group has no SCOORD3D")
+        if item.ValueType != "SCOORD3D":
+            continue
+        graphic_type = str(item.GraphicType)
+        points.extend(_triples([float(v) for v in item.GraphicData]))
+    if graphic_type is None:
+        raise SrParseError("measurement group has no SCOORD3D")
+    return graphic_type, points
 
 
 def _values(items: list[Dataset]) -> list[MeasurementValue]:
@@ -146,7 +159,7 @@ def parse_sr(ds: Dataset) -> list[MeasurementItem]:
         flat = _descendants(group)
         uid, identifier = _tracking(flat)
         graphic_type, points = _scoord(flat)
-        tool = GRAPHIC_TO_TOOL.get(graphic_type) or ("Angle" if len(points) == 3 else "Length")
+        tool = GRAPHIC_TO_TOOL.get(graphic_type) or POLYLINE_TOOLS.get(len(points), "Length")
         items.append(
             MeasurementItem(
                 id=uid,

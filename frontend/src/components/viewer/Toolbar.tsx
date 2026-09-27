@@ -1,5 +1,6 @@
 import {
   ArrowCounterClockwise,
+  ArrowsOutCardinal,
   Circle,
   CircleHalf,
   Crosshair,
@@ -43,6 +44,7 @@ const MODES: { id: MprTool; label: string; Icon: Icon }[] = [
   { id: 'Angle', label: 'Angle', Icon: Triangle },
   { id: 'Probe', label: 'Probe', Icon: Target },
   { id: 'EllipticalROI', label: 'Ellipse', Icon: Circle },
+  { id: 'Bidirectional', label: 'Bidirectional', Icon: ArrowsOutCardinal },
 ];
 
 const isMeasure = (id: MprTool) => id !== 'crosshairs' && id !== 'windowLevel';

@@ -11,6 +11,8 @@ TOOL_POINT_COUNTS: dict[str, int] = {
     "Length": 2,
     "Angle": 3,
     "EllipticalROI": 4,
+    # RECIST: long axis first, then the short axis perpendicular to it.
+    "Bidirectional": 4,
 }
 
 

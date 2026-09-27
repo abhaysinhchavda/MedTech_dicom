@@ -160,6 +160,45 @@ def test_a_degenerate_angle_is_rejected(client: TestClient, tmp_path: Path) -> N
     assert r.status_code == 422
 
 
+def test_a_bidirectional_set_round_trips_with_both_axes(
+    client: TestClient, tmp_path: Path
+) -> None:
+    series_uid = seed(client, tmp_path)
+    put = client.put(
+        f"/api/series/{series_uid}/measurements",
+        json={
+            "srSopUid": None,
+            "measurements": [
+                {
+                    **length_payload(),
+                    "tool": "Bidirectional",
+                    "points": [
+                        [0.0, 0.0, 0.0],
+                        [20.0, 0.0, 0.0],
+                        [10.0, -5.0, 0.0],
+                        [10.0, 5.0, 0.0],
+                    ],
+                    "values": [
+                        {"name": "LongAxis", "value": 111.0, "unit": "mm"},
+                        {"name": "ShortAxis", "value": 222.0, "unit": "mm"},
+                    ],
+                }
+            ],
+        },
+    )
+    assert put.status_code == 200, put.text
+
+    got = client.get(f"/api/series/{series_uid}/measurements").json()
+    (m,) = got["measurements"]
+    assert m["tool"] == "Bidirectional"
+    assert len(m["points"]) == 4
+    # Both axes are geometry, so the client's numbers are discarded.
+    assert m["values"] == [
+        {"name": "LongAxis", "value": 20.0, "unit": "mm"},
+        {"name": "ShortAxis", "value": 10.0, "unit": "mm"},
+    ]
+
+
 def test_a_corrupt_report_yields_parse_error_not_a_500(
     client: TestClient, tmp_path: Path
 ) -> None:

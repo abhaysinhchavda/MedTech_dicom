@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 from app.sr.models import TOOL_POINT_COUNTS, MeasurementItem, MeasurementValue, Point3
 
-_DERIVED_UNITS = {"Length": "mm", "Angle": "deg"}
+_DERIVED_UNITS = {"Length": "mm", "Angle": "deg", "LongAxis": "mm", "ShortAxis": "mm"}
 
 # Same syntax the ingest reader enforces on the three instance UIDs: a DICOM
 # UI is dot-separated digit groups, at most 64 characters (PS3.5 6.2). The
@@ -32,20 +32,28 @@ def _dot(a: Point3, b: Point3) -> float:
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 
 
-def _expected_value(item: MeasurementItem) -> tuple[str, float] | None:
-    """The one value this tool's own coordinates determine, if any."""
+def _expected_values(item: MeasurementItem) -> list[tuple[str, float]]:
+    """The values this tool's own coordinates determine, in wire order."""
     if item.tool == "Length":
-        return "Length", _norm(_sub(item.points[1], item.points[0]))
+        return [("Length", _norm(_sub(item.points[1], item.points[0])))]
     if item.tool == "Angle":
         a, b = _sub(item.points[0], item.points[1]), _sub(item.points[2], item.points[1])
         na, nb = _norm(a), _norm(b)
         if na == 0 or nb == 0:
             raise SrValidationError(f"{item.id}: angle has a zero-length arm")
         cos = max(-1.0, min(1.0, _dot(a, b) / (na * nb)))
-        return "Angle", math.degrees(math.acos(cos))
+        return [("Angle", math.degrees(math.acos(cos)))]
+    if item.tool == "Bidirectional":
+        out: list[tuple[str, float]] = []
+        for name, end, start in (("LongAxis", 1, 0), ("ShortAxis", 3, 2)):
+            axis = _norm(_sub(item.points[end], item.points[start]))
+            if axis == 0:
+                raise SrValidationError(f"{item.id}: {name} has zero length")
+            out.append((name, axis))
+        return out
     # A probe samples a voxel and ROI statistics need pixel access; neither is
     # derivable from coordinates alone, so both are recorded on trust.
-    return None
+    return []
 
 
 def validate_set(items: Sequence[MeasurementItem], *, frame_of_reference_uid: str) -> None:
@@ -68,9 +76,10 @@ def validate_set(items: Sequence[MeasurementItem], *, frame_of_reference_uid: st
         for vector in (item.plane.normal, item.plane.up):
             if not all(math.isfinite(c) for c in vector):
                 raise SrValidationError(f"{item.id}: view plane is not finite")
-        # Raises on a degenerate angle; the value itself is not checked against
-        # the client's, because derive_values replaces it outright.
-        _expected_value(item)
+        # Raises on a degenerate angle or axis; the values themselves are not
+        # checked against the client's, because derive_values replaces them
+        # outright.
+        _expected_values(item)
 
 
 def derive_values(item: MeasurementItem) -> list[MeasurementValue]:
@@ -87,9 +96,9 @@ def derive_values(item: MeasurementItem) -> list[MeasurementValue]:
     Probe and ROI statistics are untouched: they need pixel access, which this
     layer does not have, so they stay on the client's word.
     """
-    check = _expected_value(item)
-    if check is None:
+    expected = _expected_values(item)
+    if not expected:
         return list(item.values)
-    name, computed = check
-    others = [v for v in item.values if v.name != name]
-    return [MeasurementValue(name, round(computed, 4), _DERIVED_UNITS[name]), *others]
+    derived = [MeasurementValue(n, round(v, 4), _DERIVED_UNITS[n]) for n, v in expected]
+    replaced = {n for n, _ in expected}
+    return [*derived, *(v for v in item.values if v.name not in replaced)]

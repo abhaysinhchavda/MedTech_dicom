@@ -3,6 +3,7 @@ import {
   init as toolsInit,
   addTool,
   AngleTool,
+  BidirectionalTool,
   CrosshairsTool,
   EllipticalROITool,
   LengthTool,
@@ -62,6 +63,7 @@ export function initCornerstone(): Promise<void> {
       AngleTool,
       ProbeTool,
       EllipticalROITool,
+      BidirectionalTool,
     ])
       addTool(T);
   })();

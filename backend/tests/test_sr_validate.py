@@ -88,6 +88,45 @@ def test_a_degenerate_angle_is_rejected() -> None:
         )
 
 
+BIDIRECTIONAL_POINTS = [
+    (0.0, 0.0, 0.0),
+    (20.0, 0.0, 0.0),
+    (10.0, -5.0, 0.0),
+    (10.0, 5.0, 0.0),
+]
+
+
+def test_both_bidirectional_axes_are_recomputed_from_their_coordinates() -> None:
+    derived = derive_values(
+        item(
+            tool="Bidirectional",
+            points=BIDIRECTIONAL_POINTS,
+            values=[
+                MeasurementValue("LongAxis", 999.0, "mm"),
+                MeasurementValue("ShortAxis", 999.0, "mm"),
+            ],
+        )
+    )
+    assert derived == [
+        MeasurementValue("LongAxis", 20.0, "mm"),
+        MeasurementValue("ShortAxis", 10.0, "mm"),
+    ]
+
+
+def test_a_degenerate_bidirectional_axis_is_rejected() -> None:
+    with pytest.raises(SrValidationError, match="ShortAxis has zero length"):
+        validate_set(
+            [
+                item(
+                    tool="Bidirectional",
+                    points=[*BIDIRECTIONAL_POINTS[:2], (10.0, 0.0, 0.0), (10.0, 0.0, 0.0)],
+                    values=[MeasurementValue("LongAxis", 20.0, "mm")],
+                )
+            ],
+            frame_of_reference_uid="1.2",
+        )
+
+
 def test_probe_and_roi_values_are_left_alone() -> None:
     roi = item(
         tool="EllipticalROI",
