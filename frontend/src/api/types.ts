@@ -75,6 +75,24 @@ export interface MeasurementSet {
   parseError: string | null;
   measurements: MeasurementItem[];
 }
+export interface Segment {
+  /** 1-based. 0 is reserved for unlabelled, so this is also the voxel value. */
+  number: number;
+  label: string;
+  /** A DICOM UID, not a UUID: it is stored as a Tracking UID, whose VR is UI. */
+  trackingUid: string;
+  categoryCode: string;
+  typeCode: string;
+}
+export interface SegmentationSet {
+  seriesUid: string;
+  frameOfReferenceUid: string | null;
+  dims: [number, number, number] | null;
+  segSeriesUid: string | null;
+  segSopUid: string | null;
+  parseError: string | null;
+  segments: Segment[];
+}
 export interface UploadSummary {
   accepted: number;
   skipped: { file: string; reason: string }[];
