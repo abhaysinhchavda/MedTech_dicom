@@ -30,7 +30,7 @@ Python does everything that requires understanding DICOM.
 | HTTP | `dicomweb/qido.py`, `dicomweb/wado.py`, `api/*` | Routing, status codes, media types. No SQL, no pixel logic. |
 | Serialisation | `dicomweb/json_model.py`, `dicomweb/multipart.py` | DICOM JSON model (PS3.18 F), `multipart/related` framing. |
 | Ingest | `ingest/reader → decode → store → indexer` | Validate → decode to Explicit VR LE → file by UID → index → finalize. |
-| Domain | `geometry.py` | Slice ordering and 3D-grid validation. The only imaging maths. |
+| Domain | `geometry.py`, `sr/` | Slice ordering, 3D-grid validation, and Structured Report construction, parsing and validation. The only imaging maths. |
 | Persistence | `repo.py`, `db.py`, `models.py` | Every SQL statement lives in `repo.py`. |
 
 **Why decode at ingest, not on read.** The volume loader pulls every frame of a
@@ -65,6 +65,13 @@ cleanup path rather than a scatter of `useEffect` returns.
 
 - **DICOMweb rather than a custom API.** The frontend is a stock Cornerstone3D
   client; an OHIF instance could point at this backend unmodified.
+- **Measurements are DICOM objects, not rows.** A Structured Report is written
+  into the store as its own series and parsed back on read, so the measurement
+  *is* the standard object rather than a private table that happens to export
+  one. It is retrievable over the WADO-RS endpoint that already existed.
+- **The store holds non-image instances.** Ingest used to require `PixelData`
+  on every file. Teaching it that a DICOM instance need not be an image is what
+  made the report storable, and is the same work a segmentation object needs.
 - **Volume validation is a gate, not a warning.** A series that is not a regular
   3D grid cannot be opened; the browser greys it out with the geometric reason.
 - **Backend is modality-agnostic.** It validates geometry, not anatomy. The

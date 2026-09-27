@@ -4,11 +4,9 @@ import math
 import re
 from collections.abc import Sequence
 
-from app.sr.models import TOOL_POINT_COUNTS, MeasurementItem, Point3
+from app.sr.models import TOOL_POINT_COUNTS, MeasurementItem, MeasurementValue, Point3
 
-# Millimetres and degrees. Comfortably tighter than any real drag, comfortably
-# looser than float noise between the browser's computation and this one.
-TOLERANCE = 1e-3
+_DERIVED_UNITS = {"Length": "mm", "Angle": "deg"}
 
 # Same syntax the ingest reader enforces on the three instance UIDs: a DICOM
 # UI is dot-separated digit groups, at most 64 characters (PS3.5 6.2). The
@@ -70,15 +68,28 @@ def validate_set(items: Sequence[MeasurementItem], *, frame_of_reference_uid: st
         for vector in (item.plane.normal, item.plane.up):
             if not all(math.isfinite(c) for c in vector):
                 raise SrValidationError(f"{item.id}: view plane is not finite")
-        check = _expected_value(item)
-        if check is None:
-            continue
-        name, computed = check
-        stated = next((v.value for v in item.values if v.name == name), None)
-        if stated is None:
-            raise SrValidationError(f"{item.id}: {item.tool} has no {name} value")
-        if abs(stated - computed) > TOLERANCE:
-            raise SrValidationError(
-                f"{item.id}: stated {name} {stated} disagrees with its own "
-                f"coordinates ({computed:.4f})"
-            )
+        # Raises on a degenerate angle; the value itself is not checked against
+        # the client's, because derive_values replaces it outright.
+        _expected_value(item)
+
+
+def derive_values(item: MeasurementItem) -> list[MeasurementValue]:
+    """Recompute the values the coordinates determine, and keep the rest.
+
+    The report must be internally consistent: a consumer that reads the
+    SCOORD3D and the NUM beside it has to find them agreeing. Trusting the
+    client's number does not give that. Cornerstone measures length in index
+    space with a calibration scale (LengthTool._calculateCachedStats maps the
+    handles through worldToIndex first), so its figure is deliberately not the
+    Euclidean distance between the world-space points it stores, and the two
+    diverge on any anisotropic or calibrated volume.
+
+    Probe and ROI statistics are untouched: they need pixel access, which this
+    layer does not have, so they stay on the client's word.
+    """
+    check = _expected_value(item)
+    if check is None:
+        return list(item.values)
+    name, computed = check
+    others = [v for v in item.values if v.name != name]
+    return [MeasurementValue(name, round(computed, 4), _DERIVED_UNITS[name]), *others]

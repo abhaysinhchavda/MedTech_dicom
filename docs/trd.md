@@ -12,9 +12,11 @@ drag-and-drop upload of files, folders or `.zip`; 2×2 viewer (axial / sagittal 
 coronal MPR with synchronised crosshairs + GPU volume rendering); brain-oriented
 window and transfer-function presets.
 
-**Out:** measurements, annotations, segmentation, surface rendering, hanging
-protocols, authentication, multi-user, hosting, STOW-RS, PHI handling beyond
-"samples are anonymised".
+Measurements on the MPR planes (length, angle, probe, elliptical ROI),
+persisted as a DICOM Structured Report stored beside the images.
+
+**Out:** segmentation, surface rendering, hanging protocols, authentication,
+multi-user, hosting, STOW-RS, PHI handling beyond "samples are anonymised".
 
 ## 2. Platform
 
@@ -44,6 +46,10 @@ protocols, authentication, multi-user, hosting, STOW-RS, PHI handling beyond
 | F13 | Open a volume into 3 MPR viewports + 1 3D viewport sharing one GPU volume | `cornerstone/viewports.ts`, `ViewerLayout.tsx` | e2e + manual |
 | F14 | Synchronised crosshairs; per-plane scroll; window/level; zoom; pan; presets; reset | `cornerstone/toolGroups.ts`, `Toolbar.tsx` | e2e, `Toolbar.test.tsx` |
 | F15 | Report load progress; refuse non-volume series; confirm above 1 GB | `hooks/useVolume.ts` | `useVolume.test.tsx` |
+| F16 | Measure length, angle, probe and elliptical ROI on the MPR planes, in real units | `cornerstone/annotations.ts`, `toolGroups.ts` | `annotations.test.ts`, e2e |
+| F17 | Store a measurement set as a Comprehensive 3D SR in its own series, round-tripped on reopen | `app/sr/*`, `api/measurements.py` | `test_sr_build_parse.py`, `test_measurements_api.py`, e2e |
+| F18 | Compute length and angle from the stored coordinates, so the report is self-consistent | `app/sr/validate.py` | `test_sr_validate.py`, `test_measurements_api.py` |
+| F19 | Hold non-image DICOM instances in the store without breaking image paths | `ingest/reader.py`, `ingest/indexer.py` | `test_non_image_instances.py` |
 
 ## 4. Non-functional requirements
 
@@ -57,6 +63,9 @@ protocols, authentication, multi-user, hosting, STOW-RS, PHI handling beyond
 | N6 | Frame retrieval must not decode | Guaranteed by F3; `frames/{n}` is a byte slice with `Content-Length` and cache headers |
 | N7 | Type and lint discipline | `mypy --strict` on `app/`, TypeScript `strict`, ruff, oxlint, Prettier — all clean |
 | N8 | Test output must be pristine | Zero warnings in both suites; third-party deprecations filtered by exact match, never blanket |
+| N9 | A report that cannot be read must never stop the series opening | `GET` returns an empty set with `parseError`; the viewer shows a non-blocking notice |
+| N10 | A concurrent save must not silently overwrite another client's work | Optimistic `srSopUid` check, 409 on mismatch |
+| N11 | A half-finished save must not lose the only copy | Write the new report and index it before deleting the previous one; the newest instance wins on read |
 
 ## 5. Interfaces
 
@@ -64,6 +73,9 @@ protocols, authentication, multi-user, hosting, STOW-RS, PHI handling beyond
 GET  /api/health                                   → {"status":"ok"}
 GET  /api/series/{series_uid}/volume-info          → {seriesUid,isVolume,reason,dims,spacing,origin,
                                                       direction,modality,sortMethod,instanceCount,estimatedBytes}
+GET  /api/series/{series_uid}/measurements         → {seriesUid,frameOfReferenceUid,srSeriesUid,
+                                                      srSopUid,parseError,measurements[]}
+PUT  /api/series/{series_uid}/measurements         → same envelope, with the new srSopUid
 POST /api/upload            (multipart, field `files`, repeated)
                                                    → {accepted,skipped:[{file,reason}],studyUids}
 GET  /dicomweb/studies[?PatientName&PatientID&StudyDate&limit&offset]      → application/dicom+json
@@ -83,11 +95,13 @@ Errors: `400` unsafe zip entry · `404` unknown UID or frame out of range ·
 
 ## 6. Verification
 
-`scripts/test.ps1` → **83 backend tests** (pytest) + 3 script tests + ruff +
-mypy + **37 frontend tests** (vitest), exit 0, no warnings.
-`cd frontend; npm run e2e` → **1 Playwright test**: seeds a synthetic 40-slice
-series, opens it, asserts four non-blank canvases, scroll, crosshair sync, preset
-change and reopen. No network, no sample data.
+`scripts/test.ps1` → **122 backend tests** (pytest) + 3 script tests + ruff +
+mypy + **54 frontend tests** (vitest), exit 0, no warnings.
+`cd frontend; npm run e2e` → **2 Playwright tests**: the first seeds a
+synthetic 40-slice series, opens it, and asserts four non-blank canvases,
+scroll, crosshair sync, preset change and reopen; the second draws a length,
+saves it, reloads the page, and asserts the report comes back over WADO-RS.
+No network, no sample data.
 
 **Sample data:** two brain MR series from TCIA UPENN-GBM patient
 `UPENN-GBM-00041` — T1 MPRAGE (160 slices, transcoded to JPEG 2000 Lossless so
@@ -105,3 +119,21 @@ CC BY 4.0, fetched and verified by `scripts/fetch_samples.py` against
   response but the request completes.
 - `npm audit` reports transitive advisories under `@cornerstonejs` → vtk.js with
   no non-breaking upstream fix; the app is local-only.
+- The view plane a measurement was drawn on has no slot in TID 1500, so it is
+  written as extra numeric content items under a private coding scheme
+  (`99DICOMVIEWER`). A foreign reader ignores them and still reads the
+  measurement correctly; ours needs them, because a two-point length cannot
+  have its plane inferred from two points.
+- Only reports this application wrote are parsed. A third-party SR is reported
+  as unreadable rather than partially interpreted.
+- Length and angle are recomputed from the SCOORD3D coordinates rather than
+  taken from the client, so the number and the geometry beside it always
+  agree. Cornerstone measures length in index space with a calibration scale,
+  so its on-screen figure can differ from the patient-space millimetres the
+  report records on an anisotropic or calibrated volume. The report's value is
+  the more defensible of the two, but they are not guaranteed identical.
+- Probe and ROI statistics are recorded on the client's word, because
+  verifying them needs pixel access this layer deliberately does not take.
+- A restored measurement carries geometry only. Cornerstone recomputes its
+  numbers against the loaded volume, so a value shown after a reload is
+  derived afresh rather than replayed from the report.

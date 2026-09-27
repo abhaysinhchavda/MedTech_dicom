@@ -123,14 +123,41 @@ def test_a_stale_sop_uid_is_rejected(client: TestClient, tmp_path: Path) -> None
     assert r.status_code == 409
 
 
-def test_an_inconsistent_length_is_rejected(client: TestClient, tmp_path: Path) -> None:
+def test_the_stored_length_is_computed_from_the_coordinates(
+    client: TestClient, tmp_path: Path
+) -> None:
+    # The client sends nonsense; the report still records 5.0, the distance
+    # between the two points it also stores. A consumer reading the SCOORD3D
+    # and the NUM beside it must find them agreeing.
     series_uid = seed(client, tmp_path)
     r = client.put(
         f"/api/series/{series_uid}/measurements",
         json={"srSopUid": None, "measurements": [length_payload(value=99.0)]},
     )
+    assert r.status_code == 200, r.text
+    assert r.json()["measurements"][0]["values"] == [{"name": "Length", "value": 5.0, "unit": "mm"}]
+
+    got = client.get(f"/api/series/{series_uid}/measurements").json()
+    assert got["measurements"][0]["values"][0]["value"] == 5.0
+
+
+def test_a_degenerate_angle_is_rejected(client: TestClient, tmp_path: Path) -> None:
+    series_uid = seed(client, tmp_path)
+    r = client.put(
+        f"/api/series/{series_uid}/measurements",
+        json={
+            "srSopUid": None,
+            "measurements": [
+                {
+                    **length_payload(),
+                    "tool": "Angle",
+                    "points": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [1.0, 1.0, 0.0]],
+                    "values": [{"name": "Angle", "value": 45.0, "unit": "deg"}],
+                }
+            ],
+        },
+    )
     assert r.status_code == 422
-    assert "disagrees" in r.json()["detail"]
 
 
 def test_a_corrupt_report_yields_parse_error_not_a_500(

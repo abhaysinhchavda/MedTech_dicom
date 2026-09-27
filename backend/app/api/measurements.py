@@ -16,7 +16,7 @@ from app.ingest.indexer import finalize_series, index_instance
 from app.ingest.store import file_instance
 from app.models import InstanceRow, SeriesRow
 from app.sr import MeasurementItem, MeasurementValue, Plane, SrParseError, build_sr, parse_sr
-from app.sr.validate import SrValidationError, validate_set
+from app.sr.validate import SrValidationError, derive_values, validate_set
 
 router = APIRouter(prefix="/api", tags=["measurements"])
 SR_MODALITY = "SR"
@@ -137,6 +137,19 @@ def put_measurements(
     items = [_item_from_json(raw) for raw in payload.get("measurements", [])]
     try:
         validate_set(items, frame_of_reference_uid=for_uid or "")
+        # The coordinates are the ground truth, so the stored length and angle
+        # are computed from them rather than taken from the client.
+        items = [
+            MeasurementItem(
+                id=i.id,
+                tool=i.tool,
+                points=i.points,
+                plane=i.plane,
+                values=derive_values(i),
+                label=i.label,
+            )
+            for i in items
+        ]
     except SrValidationError as e:
         raise HTTPException(422, str(e)) from e
 

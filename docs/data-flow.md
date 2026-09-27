@@ -95,6 +95,46 @@ emits `CAMERA_MODIFIED`, which updates their slice counters.
 `useVolume`'s started-latch is keyed to `seriesUid`, so a route param change
 loads the new series instead of reporting the old one as ready.
 
+## 4. Measure - annotation to Structured Report and back
+
+```
+Toolbar tool mode ──▶ left-drag on an MPR viewport
+        │  Cornerstone fires ANNOTATION_COMPLETED on its global eventTarget
+        ▼
+useMeasurements marks the set dirty ──▶ Save enables
+        │
+        ▼
+PUT /api/series/{uid}/measurements   { srSopUid, measurements[] }
+        │
+        ├─ validate: tool name, point count, UID syntax, frame of
+        │            reference, finite coordinates      -> 422
+        ├─ derive: Length and Angle recomputed from the coordinates, so the
+        │          NUM and the SCOORD3D beside it always agree
+        ├─ srSopUid still current?                      -> 409 if not
+        ├─ sr/build.py: Comprehensive3DSR, TID 1500, SCOORD3D in world mm
+        ├─ store.file_instance -> data/store/<study>/<sr-series>/<sop>.dcm
+        ├─ index_instance + finalize_series  (is_volume 0, no thumbnail)
+        └─ delete the previous report: file, then row
+        ▼
+      new srSopUid; dirty clears
+```
+
+```
+Reopening the series
+  useMeasurements ── GET /api/series/{uid}/measurements
+        │  repo: series WHERE derived_from_series_uid = uid AND modality = 'SR'
+        │  newest instance wins  ──▶ sr/parse.py ──▶ wire JSON
+        ▼
+  annotations.ts: addAnnotation() per measurement, keyed by
+  FrameOfReferenceUID, with the view plane restored to metadata and the
+  annotation marked invalidated so Cornerstone recomputes its numbers
+  against the volume that is actually loaded
+```
+
+**Why the save order matters.** The new report is written and indexed *before*
+the old one is deleted. A crash in between leaves two reports, of which the
+newest wins and the other is inert; the reverse order could lose the only copy.
+
 ## Error paths
 
 | Where | Behaviour |
@@ -105,3 +145,6 @@ loads the new series instead of reporting the old one as ready.
 | Unknown UID | `404` with `{detail}` |
 | Upload too large / bad zip / path traversal | `413` / `400`, message shown in the dropzone |
 | WebGL2 missing | Full-page "WebGL2 required" instead of a blank canvas |
+| Report unreadable | Empty set plus `parseError`; the viewer still opens, with a non-blocking notice |
+| Report changed elsewhere | `409`; the save is refused and the set stays dirty |
+| Series has no frame of reference | Measurement tools disabled, with the reason on hover |

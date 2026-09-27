@@ -66,8 +66,10 @@ stated reason rather than failing the upload.
 cd frontend; npm run e2e    # Playwright: loads a synthetic series and drives the viewer
 ```
 
-83 backend tests, 36 frontend tests, 1 end-to-end test. The e2e test starts its own
-backend against a synthetic DICOM series, so it needs no sample data and no network.
+122 backend tests, 54 frontend tests, 2 end-to-end tests. The e2e tests start their
+own backend against a synthetic DICOM series, so they need no sample data and no
+network. The second one draws a measurement, saves it, reloads, and checks the
+Structured Report comes back.
 
 ## DICOM standards implemented
 
@@ -80,6 +82,11 @@ backend against a synthetic DICOM series, so it needs no sample data and no netw
 - **Transfer syntax normalisation** — JPEG 2000 / JPEG-LS / RLE are decoded once at
   ingest and stored as Explicit VR Little Endian, so frame retrieval is a byte slice.
   SOP Instance UIDs are preserved across decoding.
+- **Structured Reporting (TID 1500)** — measurements are stored as a
+  Comprehensive 3D SR in the study, indexed as its own series, retrievable over
+  WADO-RS and parsed back when the series is reopened. Coordinates are SCOORD3D
+  in patient space, so a measurement made on a reformatted plane does not have
+  to pretend it belongs to a stored image.
 - **Slice geometry** — anatomical ordering by the projection of `ImagePositionPatient`
   onto the slice normal derived from `ImageOrientationPatient`, with documented
   fallbacks.
@@ -106,10 +113,14 @@ series against `scripts/samples.json`.
 v1 is brain-focused: brain MR samples and brain-oriented window/transfer-function
 presets. The backend itself is modality-agnostic — it validates geometry, not anatomy.
 
-Not included: measurements and annotations, segmentation, surface (mesh) rendering,
-hanging protocols, authentication, or hosting. It runs locally.
+Measurements are included: length, angle, probe and elliptical ROI on the MPR
+planes, saved into the study as a DICOM Structured Report rather than a private
+format.
+
+Not included: segmentation, surface (mesh) rendering, hanging protocols,
+authentication, or hosting. It runs locally.
 
 ## Roadmap
 
-Measurements (length / angle / probe) · labelmap segmentation · marching-cubes surface
-export.
+Labelmap segmentation · marching-cubes surface export · reading Structured
+Reports written by other systems.
