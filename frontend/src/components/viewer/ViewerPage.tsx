@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft } from '@phosphor-icons/react';
 import { Link, useParams } from 'react-router';
+import { apiUrl } from '../../api/client';
 import { getSeries } from '../../api/dicomweb';
+import { useMeasurements } from '../../hooks/useMeasurements';
 import { useVolume } from '../../hooks/useVolume';
 import { Brand } from '../ui/Brand';
 import { ErrorBanner } from '../ui/ErrorBanner';
@@ -30,6 +32,13 @@ export function ViewerPage() {
   const seriesQ = useQuery({ queryKey: ['series', studyUid], queryFn: () => getSeries(studyUid) });
   const description = seriesQ.data?.find((s) => s.seriesUid === seriesUid)?.description ?? '';
   const big = (v.info?.estimatedBytes ?? 0) > 1e9;
+  const m = useMeasurements(seriesUid, v.status === 'ready');
+  const reportUrl =
+    m.set?.srSeriesUid && m.set.srSopUid
+      ? apiUrl(
+          `/dicomweb/studies/${studyUid}/series/${m.set.srSeriesUid}/instances/${m.set.srSopUid}`,
+        )
+      : null;
 
   return (
     <div className="flex h-full flex-col bg-base">
@@ -69,7 +78,35 @@ export function ViewerPage() {
             </>
           )}
           {v.status === 'ready' && v.volumeId && v.info && (
-            <ViewerLayout volumeId={v.volumeId} modality={v.info.modality} />
+            <ViewerLayout
+              volumeId={v.volumeId}
+              modality={v.info.modality}
+              dirty={m.dirty}
+              saving={m.saving}
+              canMeasure={Boolean(m.set?.frameOfReferenceUid)}
+              onSave={() => void m.save()}
+              reportUrl={reportUrl}
+              onAnnotationChange={m.markDirty}
+            />
+          )}
+          {/* Both notices are non-blocking on purpose: an unreadable or
+              unsaveable report must never stop the images being read. */}
+          {m.parseError && (
+            <div
+              role="status"
+              className="absolute inset-x-2 top-14 z-20 rounded-control border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn"
+            >
+              A report exists for this series but could not be read. Measuring and saving will
+              replace it.
+            </div>
+          )}
+          {m.error && (
+            <div
+              role="alert"
+              className="absolute inset-x-2 top-14 z-20 rounded-control border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger"
+            >
+              {m.error}
+            </div>
           )}
         </div>
         {v.info?.isVolume && <MetadataPanel info={v.info} description={description} />}

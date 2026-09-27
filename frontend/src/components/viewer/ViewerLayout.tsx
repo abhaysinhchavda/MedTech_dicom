@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { getRenderingEngine, type Types } from '@cornerstonejs/core';
+import { eventTarget, getRenderingEngine, type Types } from '@cornerstonejs/core';
+import { Enums as csToolsEnums } from '@cornerstonejs/tools';
 import {
   ALL_IDS,
   MPR_IDS,
@@ -12,7 +13,8 @@ import {
 import {
   createToolGroups,
   destroyToolGroups,
-  setCrosshairsActive,
+  setActiveMprTool,
+  type MprTool,
 } from '../../cornerstone/toolGroups';
 import { defaultVolumePreset, voiRange, type VoiPreset } from '../../cornerstone/presets';
 import { Toolbar } from './Toolbar';
@@ -26,13 +28,27 @@ const LABELS: Record<ViewportKey, string> = {
   volume3d: '3D',
 };
 
+export interface ViewerLayoutProps {
+  volumeId: string;
+  modality: string | null;
+  dirty: boolean;
+  saving: boolean;
+  canMeasure: boolean;
+  onSave: () => void;
+  reportUrl: string | null;
+  onAnnotationChange: () => void;
+}
+
 export function ViewerLayout({
   volumeId,
   modality,
-}: {
-  volumeId: string;
-  modality: string | null;
-}) {
+  dirty,
+  saving,
+  canMeasure,
+  onSave,
+  reportUrl,
+  onAnnotationChange,
+}: ViewerLayoutProps) {
   const axial = useRef<HTMLDivElement>(null);
   const sagittal = useRef<HTMLDivElement>(null);
   const coronal = useRef<HTMLDivElement>(null);
@@ -40,7 +56,7 @@ export function ViewerLayout({
   const refs = { axial, sagittal, coronal, volume3d };
   const grid = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
-  const [crosshairs, setCrosshairs] = useState(true);
+  const [tool, setTool] = useState<MprTool>('crosshairs');
   const [max, setMax] = useState<ViewportKey | null>(null);
   const [voiPresetName, setVoiPresetName] = useState('');
   const [volPresetName, setVolPresetName] = useState(() => defaultVolumePreset(modality));
@@ -144,13 +160,13 @@ export function ViewerLayout({
         // above just put back to the default framing. That re-centres the
         // crosshairs without reaching into CrosshairsTool's private
         // (underscore-prefixed, untyped) recompute method directly.
-        setCrosshairsActive(crosshairs);
+        setActiveMprTool(tool);
       })
       .catch((err: unknown) => console.error('showVolume failed', err));
   };
-  const onCrosshairs = (on: boolean) => {
-    setCrosshairs(on);
-    setCrosshairsActive(on);
+  const onTool = (t: MprTool) => {
+    setTool(t);
+    setActiveMprTool(t);
     engine()?.render();
   };
 
@@ -175,7 +191,9 @@ export function ViewerLayout({
       else
         switch (e.key.toLowerCase()) {
           case 'c':
-            onCrosshairs(!crosshairs);
+            // C flips between the two navigation modes. A measurement mode is
+            // chosen deliberately from the toolbar, never by a stray keypress.
+            onTool(tool === 'crosshairs' ? 'windowLevel' : 'crosshairs');
             break;
           case 'i':
             onInvert();
@@ -191,7 +209,22 @@ export function ViewerLayout({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [crosshairs, volumeId, modality]);
+  }, [tool, volumeId, modality]);
+
+  // Cornerstone fires annotation events on its global eventTarget, not on a
+  // viewport element, so this is the one place that can notice a drawing.
+  useEffect(() => {
+    const mark = () => onAnnotationChange();
+    const events = [
+      csToolsEnums.Events.ANNOTATION_COMPLETED,
+      csToolsEnums.Events.ANNOTATION_MODIFIED,
+      csToolsEnums.Events.ANNOTATION_REMOVED,
+    ];
+    for (const e of events) eventTarget.addEventListener(e, mark);
+    return () => {
+      for (const e of events) eventTarget.removeEventListener(e, mark);
+    };
+  }, [onAnnotationChange]);
 
   const panel = (key: ViewportKey) => (
     <div key={key} className={max && max !== key ? 'hidden' : 'contents'}>
@@ -212,8 +245,13 @@ export function ViewerLayout({
     <div className="flex flex-col h-full">
       <Toolbar
         modality={modality}
-        crosshairs={crosshairs}
-        onCrosshairs={onCrosshairs}
+        tool={tool}
+        onTool={onTool}
+        dirty={dirty}
+        saving={saving}
+        canMeasure={canMeasure}
+        onSave={onSave}
+        reportUrl={reportUrl}
         voiPresetName={voiPresetName}
         onVoiPreset={onVoiPreset}
         volPresetName={volPresetName}

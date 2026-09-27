@@ -1,6 +1,22 @@
-import { describe, expect, test } from 'vitest';
-import { fromWire, toDicomUid, toWire } from './annotations';
+import { describe, expect, test, vi } from 'vitest';
 import type { MeasurementItem } from '../api/types';
+
+// The functions under test are pure. Importing the real @cornerstonejs/tools
+// pulls its whole bundle (and vtk.js behind it) into jsdom, which starves
+// vitest's worker pool badly enough that unrelated test files time out before
+// they even start. The state manager is exercised for real by the Playwright
+// test instead.
+vi.mock('@cornerstonejs/tools', () => ({
+  annotation: {
+    state: {
+      addAnnotation: vi.fn(),
+      getAnnotations: vi.fn(() => []),
+      removeAllAnnotations: vi.fn(),
+    },
+  },
+}));
+
+const { fromWire, toDicomUid, toWire } = await import('./annotations');
 
 const item: MeasurementItem = {
   id: '2.25.100000000000000000000000000000001',

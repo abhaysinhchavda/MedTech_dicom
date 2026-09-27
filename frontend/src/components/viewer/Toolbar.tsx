@@ -1,36 +1,79 @@
-import { ArrowCounterClockwise, CircleHalf, Crosshair } from '@phosphor-icons/react';
+import {
+  ArrowCounterClockwise,
+  Circle,
+  CircleHalf,
+  Crosshair,
+  DownloadSimple,
+  Ruler,
+  Target,
+  Triangle,
+  type Icon,
+} from '@phosphor-icons/react';
 import { voiPresetsFor, volumePresetsFor, type VoiPreset } from '../../cornerstone/presets';
+import type { MprTool } from '../../cornerstone/toolGroups';
 import { Button } from '../ui/Button';
 
 export interface ToolbarProps {
   modality: string | null;
-  crosshairs: boolean;
-  onCrosshairs: (on: boolean) => void;
+  tool: MprTool;
+  onTool: (t: MprTool) => void;
   voiPresetName: string;
   onVoiPreset: (p: VoiPreset) => void;
   volPresetName: string;
   onVolumePreset: (name: string) => void;
   onInvert: () => void;
   onReset: () => void;
+  dirty: boolean;
+  saving: boolean;
+  canMeasure: boolean;
+  onSave: () => void;
+  reportUrl: string | null;
 }
 
 const SELECT =
   'rounded-control border border-line bg-raised px-2 py-1.5 text-sm text-ink transition-colors duration-150 hover:border-line-strong disabled:opacity-40';
 const FIELD = 'flex items-center gap-2 text-xs text-faint';
 
+// Exactly one of these owns left-drag at a time, which is why they render as
+// one mutually exclusive group rather than as independent toggles.
+const MODES: { id: MprTool; label: string; Icon: Icon }[] = [
+  { id: 'crosshairs', label: 'Crosshairs', Icon: Crosshair },
+  { id: 'windowLevel', label: 'Window', Icon: CircleHalf },
+  { id: 'Length', label: 'Length', Icon: Ruler },
+  { id: 'Angle', label: 'Angle', Icon: Triangle },
+  { id: 'Probe', label: 'Probe', Icon: Target },
+  { id: 'EllipticalROI', label: 'Ellipse', Icon: Circle },
+];
+
+const isMeasure = (id: MprTool) => id !== 'crosshairs' && id !== 'windowLevel';
+
 export function Toolbar(p: ToolbarProps) {
   const voi = voiPresetsFor(p.modality);
   const vol = volumePresetsFor(p.modality);
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line bg-surface px-3 py-2">
-      <Button
-        active={p.crosshairs}
-        title="Toggle crosshairs (C)"
-        onClick={() => p.onCrosshairs(!p.crosshairs)}
-      >
-        <Crosshair aria-hidden size={15} />
-        Crosshairs
-      </Button>
+      <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Tool mode">
+        {MODES.map(({ id, label, Icon: ModeIcon }) => {
+          const blocked = !p.canMeasure && isMeasure(id);
+          return (
+            <Button
+              key={id}
+              active={p.tool === id}
+              disabled={blocked}
+              title={
+                blocked ? 'This series has no frame of reference, so it cannot be measured' : label
+              }
+              onClick={() => p.onTool(id)}
+            >
+              <ModeIcon aria-hidden size={15} />
+              {label}
+            </Button>
+          );
+        })}
+      </div>
+
+      <span aria-hidden className="mx-1 hidden h-5 w-px bg-line sm:block" />
+
       <Button title="Invert greyscale (I)" onClick={p.onInvert}>
         <CircleHalf aria-hidden size={15} />
         Invert
@@ -39,8 +82,6 @@ export function Toolbar(p: ToolbarProps) {
         <ArrowCounterClockwise aria-hidden size={15} />
         Reset
       </Button>
-
-      <span aria-hidden className="mx-1 hidden h-5 w-px bg-line sm:block" />
 
       <label className={FIELD}>
         MPR window
@@ -82,9 +123,25 @@ export function Toolbar(p: ToolbarProps) {
         </select>
       </label>
 
-      <p className="num ml-auto hidden text-xs text-faint lg:block">
-        C crosshairs · I invert · R reset · 1-4 maximize · Esc restore
-      </p>
+      <div className="ml-auto flex items-center gap-3">
+        {p.reportUrl && (
+          <a
+            className="flex items-center gap-1.5 text-xs text-accent hover:underline"
+            href={p.reportUrl}
+            download
+          >
+            <DownloadSimple aria-hidden size={14} />
+            Download report
+          </a>
+        )}
+        <Button
+          variant={p.dirty ? 'primary' : 'quiet'}
+          disabled={!p.dirty || p.saving}
+          onClick={p.onSave}
+        >
+          {p.saving ? 'Saving' : p.dirty ? 'Save measurements' : 'Saved'}
+        </Button>
+      </div>
     </div>
   );
 }
