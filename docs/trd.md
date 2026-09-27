@@ -12,8 +12,9 @@ drag-and-drop upload of files, folders or `.zip`; 2×2 viewer (axial / sagittal 
 coronal MPR with synchronised crosshairs + GPU volume rendering); brain-oriented
 window and transfer-function presets.
 
-Measurements on the MPR planes (length, angle, probe, elliptical ROI),
-persisted as a DICOM Structured Report stored beside the images.
+Measurements on the MPR planes (length, angle, probe, elliptical ROI, and
+bidirectional long/short axis), persisted as a DICOM Structured Report stored
+beside the images.
 
 **Out:** segmentation, surface rendering, hanging protocols, authentication,
 multi-user, hosting, STOW-RS, PHI handling beyond "samples are anonymised".
@@ -46,7 +47,7 @@ multi-user, hosting, STOW-RS, PHI handling beyond "samples are anonymised".
 | F13 | Open a volume into 3 MPR viewports + 1 3D viewport sharing one GPU volume | `cornerstone/viewports.ts`, `ViewerLayout.tsx` | e2e + manual |
 | F14 | Synchronised crosshairs; per-plane scroll; window/level; zoom; pan; presets; reset | `cornerstone/toolGroups.ts`, `Toolbar.tsx` | e2e, `Toolbar.test.tsx` |
 | F15 | Report load progress; refuse non-volume series; confirm above 1 GB | `hooks/useVolume.ts` | `useVolume.test.tsx` |
-| F16 | Measure length, angle, probe and elliptical ROI on the MPR planes, in real units | `cornerstone/annotations.ts`, `toolGroups.ts` | `annotations.test.ts`, e2e |
+| F16 | Measure length, angle, probe, elliptical ROI and bidirectional (RECIST long/short axis) on the MPR planes, in real units | `cornerstone/annotations.ts`, `toolGroups.ts` | `annotations.test.ts`, e2e |
 | F17 | Store a measurement set as a Comprehensive 3D SR in its own series, round-tripped on reopen | `app/sr/*`, `api/measurements.py` | `test_sr_build_parse.py`, `test_measurements_api.py`, e2e |
 | F18 | Compute length and angle from the stored coordinates, so the report is self-consistent | `app/sr/validate.py` | `test_sr_validate.py`, `test_measurements_api.py` |
 | F19 | Hold non-image DICOM instances in the store without breaking image paths | `ingest/reader.py`, `ingest/indexer.py` | `test_non_image_instances.py` |
@@ -95,8 +96,8 @@ Errors: `400` unsafe zip entry · `404` unknown UID or frame out of range ·
 
 ## 6. Verification
 
-`scripts/test.ps1` → **122 backend tests** (pytest) + 3 script tests + ruff +
-mypy + **54 frontend tests** (vitest), exit 0, no warnings.
+`scripts/test.ps1` → **127 backend tests** (pytest) + 3 script tests + ruff +
+mypy + **55 frontend tests** (vitest), exit 0, no warnings.
 `cd frontend; npm run e2e` → **2 Playwright tests**: the first seeds a
 synthetic 40-slice series, opens it, and asserts four non-blank canvases,
 scroll, crosshair sync, preset change and reopen; the second draws a length,

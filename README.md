@@ -66,7 +66,7 @@ stated reason rather than failing the upload.
 cd frontend; npm run e2e    # Playwright: loads a synthetic series and drives the viewer
 ```
 
-122 backend tests, 54 frontend tests, 2 end-to-end tests. The e2e tests start their
+127 backend tests, 55 frontend tests, 2 end-to-end tests. The e2e tests start their
 own backend against a synthetic DICOM series, so they need no sample data and no
 network. The second one draws a measurement, saves it, reloads, and checks the
 Structured Report comes back.
@@ -113,9 +113,9 @@ series against `scripts/samples.json`.
 v1 is brain-focused: brain MR samples and brain-oriented window/transfer-function
 presets. The backend itself is modality-agnostic — it validates geometry, not anatomy.
 
-Measurements are included: length, angle, probe and elliptical ROI on the MPR
-planes, saved into the study as a DICOM Structured Report rather than a private
-format.
+Measurements are included: length, angle, probe, elliptical ROI and
+bidirectional (the RECIST long/short axis pair) on the MPR planes, saved into
+the study as a DICOM Structured Report rather than a private format.
 
 Not included: segmentation, surface (mesh) rendering, hanging protocols,
 authentication, or hosting. It runs locally.
