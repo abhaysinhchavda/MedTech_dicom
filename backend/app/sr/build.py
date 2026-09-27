@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from copy import deepcopy
 from typing import Any
 
 import highdicom as hd
@@ -10,6 +9,7 @@ from pydicom.dataset import Dataset
 from pydicom.sr.codedict import codes
 from pydicom.sr.coding import Code
 
+from app.source_images import prepared_source_images
 from app.sr.models import MeasurementItem, Point3
 
 # Verified against pydicom's code dictionary. The obvious guesses
@@ -52,35 +52,6 @@ AXIS_SPANS: dict[str, slice] = {"LongAxis": slice(0, 2), "ShortAxis": slice(2, 4
 # a reopened two-point length cannot have its plane inferred from 2 points.
 PLANE_SCHEME = "99DICOMVIEWER"
 _AXES = ("X", "Y", "Z")
-
-# highdicom reads these straight off evidence[0] to populate the SR's Patient
-# and General Study modules. Anonymised and synthetic datasets routinely omit
-# them, and the resulting AttributeError says nothing useful about why.
-_EVIDENCE_DEFAULTS = (
-    "PatientID",
-    "PatientName",
-    "PatientBirthDate",
-    "PatientSex",
-    "StudyID",
-    "AccessionNumber",
-    "ReferringPhysicianName",
-    "StudyDate",
-    "StudyTime",
-)
-
-
-def _prepared_evidence(evidence: Sequence[Dataset]) -> list[Dataset]:
-    out: list[Dataset] = []
-    for ds in evidence:
-        # deepcopy: filling blanks must not mutate the caller's dataset, which
-        # in the API layer is a freshly read source image.
-        copy = deepcopy(ds)
-        for tag in _EVIDENCE_DEFAULTS:
-            if tag not in copy:
-                setattr(copy, tag, "")
-        out.append(copy)
-    return out
-
 
 def _plane_items(item: MeasurementItem) -> list[hd.sr.NumContentItem]:
     out: list[hd.sr.NumContentItem] = []
@@ -171,7 +142,7 @@ def build_sr(
         title=codes.DCM.ImagingMeasurementReport,
     )
     return hd.sr.Comprehensive3DSR(
-        evidence=_prepared_evidence(evidence),
+        evidence=prepared_source_images(evidence),
         content=report[0],
         series_instance_uid=sr_series_uid,
         series_number=series_number,
