@@ -8,6 +8,7 @@ from app.sr.models import (
     Point3,
 )
 from app.sr.parse import SrParseError, parse_sr
+from app.sr.validate import SrValidationError, validate_set
 
 __all__ = [
     "TOOL_POINT_COUNTS",
@@ -17,6 +18,8 @@ __all__ = [
     "Plane",
     "Point3",
     "SrParseError",
+    "SrValidationError",
     "build_sr",
     "parse_sr",
+    "validate_set",
 ]

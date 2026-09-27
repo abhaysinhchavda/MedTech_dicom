@@ -70,10 +70,15 @@ def _positions(rows: list[InstanceRow]) -> list[float] | None:
 def volume_info(rows: list[InstanceRow], method: SortMethod) -> VolumeInfo:
     if method != "geometry":
         return VolumeInfo(False, "missing or inconsistent orientation")
-    n_slices = sum(r.num_frames for r in rows)
+    n_slices = sum(r.num_frames or 0 for r in rows)
     if n_slices < 3:
         return VolumeInfo(False, "fewer than 3 slices")
     first = rows[0]
+    # Non-image instances carry none of the pixel geometry below.
+    # finalize_series short-circuits before reaching here, so this is a second
+    # line of defense rather than the usual path.
+    if first.rows is None or first.cols is None:
+        return VolumeInfo(False, "not an image series")
     sig = (
         first.rows, first.cols, first.bits_allocated,
         first.pixel_representation, first.pixel_spacing,

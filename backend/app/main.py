@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health, upload, volume
+from app.api import health, measurements, upload, volume
 from app.config import Settings, get_settings
 from app.db import connect, init_schema
 from app.dicomweb import qido, wado
@@ -66,6 +66,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["*"],
         allow_headers=["*"], expose_headers=["X-Sort-Method", "Content-Length"],
     )
-    for r in (health.router, volume.router, upload.router, qido.router, wado.router):
+    for r in (
+        health.router,
+        volume.router,
+        upload.router,
+        measurements.router,
+        qido.router,
+        wado.router,
+    ):
         app.include_router(r)
     return app

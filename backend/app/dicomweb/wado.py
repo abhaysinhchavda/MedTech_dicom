@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -46,6 +47,45 @@ def _instance_or_404(
     return i
 
 
+@dataclass(frozen=True)
+class _ImageInstance:
+    """An instance that definitely has pixels, with its geometry non-optional."""
+
+    path: str
+    sop_uid: str
+    rows: int
+    cols: int
+    samples_per_pixel: int
+    bits_allocated: int
+    num_frames: int
+
+
+def _image_or_404(i: InstanceRow) -> _ImageInstance:
+    """Reject a non-image instance before any pixel arithmetic.
+
+    The store now holds Structured Reports too. Asking one of those for a
+    frame or a rendered thumbnail used to be impossible; without this guard it
+    would raise TypeError on None and surface as a 500.
+    """
+    if (
+        i.rows is None
+        or i.cols is None
+        or i.bits_allocated is None
+        or i.samples_per_pixel is None
+        or i.num_frames is None
+    ):
+        raise HTTPException(404, f"instance {i.sop_uid} is not an image")
+    return _ImageInstance(
+        path=i.path,
+        sop_uid=i.sop_uid,
+        rows=i.rows,
+        cols=i.cols,
+        samples_per_pixel=i.samples_per_pixel,
+        bits_allocated=i.bits_allocated,
+        num_frames=i.num_frames,
+    )
+
+
 @router.get("/studies/{study_uid}/series/{series_uid}/metadata")
 def series_metadata(
     study_uid: str, series_uid: str, conn: sqlite3.Connection = Depends(get_db)
@@ -68,7 +108,7 @@ def instance_frame(
     frame: int,
     conn: sqlite3.Connection = Depends(get_db),
 ) -> Response:
-    i = _instance_or_404(conn, study_uid, series_uid, sop_uid)
+    i = _image_or_404(_instance_or_404(conn, study_uid, series_uid, sop_uid))
     if frame < 1 or frame > i.num_frames:
         raise HTTPException(404, f"frame {frame} out of range 1..{i.num_frames}")
     ds = pydicom.dcmread(i.path)
@@ -116,7 +156,7 @@ def instance_rendered(
     viewport: str = Query("128,128", pattern=r"^[1-9]\d{0,3},[1-9]\d{0,3}$"),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> Response:
-    i = _instance_or_404(conn, study_uid, series_uid, sop_uid)
+    i = _image_or_404(_instance_or_404(conn, study_uid, series_uid, sop_uid))
     ds = pydicom.dcmread(i.path)
     arr = ds.pixel_array
     if arr.ndim == 3 and i.num_frames > 1:
