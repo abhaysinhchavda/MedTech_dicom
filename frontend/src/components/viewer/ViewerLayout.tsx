@@ -16,6 +16,7 @@ import {
   setActiveMprTool,
   type MprTool,
 } from '../../cornerstone/toolGroups';
+import { isPaintEvent } from '../../cornerstone/segmentation';
 import type { Segment } from '../../api/types';
 import { defaultVolumePreset, voiRange, type VoiPreset } from '../../cornerstone/presets';
 import { Toolbar } from './Toolbar';
@@ -246,9 +247,13 @@ export function ViewerLayout({
   }, [onAnnotationChange]);
 
   // Painting fires on the same global target. Kept separate from the
-  // annotation listener because the two save independently.
+  // annotation listener because the two save independently, and filtered
+  // because Cornerstone fires this event for rendering the labelmap as well
+  // as for changing it -- see isPaintEvent.
   useEffect(() => {
-    const mark = () => onSegmentationChange();
+    const mark = (e: Event) => {
+      if (isPaintEvent(e)) onSegmentationChange();
+    };
     const event = csToolsEnums.Events.SEGMENTATION_DATA_MODIFIED;
     eventTarget.addEventListener(event, mark);
     return () => eventTarget.removeEventListener(event, mark);

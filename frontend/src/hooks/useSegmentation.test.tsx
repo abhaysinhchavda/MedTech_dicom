@@ -31,11 +31,6 @@ const wrap = ({ children }: { children: ReactNode }) => (
 const render = () =>
   renderHook(() => useSegmentation(SERIES, true, 'vol:1', VIEWPORTS), { wrapper: wrap });
 
-// The hook ignores Cornerstone's dirty signal until a frame after the load,
-// because setting the labelmap up fires that signal itself. Waiting a frame
-// is how a caller reaches the state a user is in when they pick up the brush.
-const frame = () => act(async () => void (await new Promise(requestAnimationFrame)));
-
 test('loads, offers a default segment and is not dirty', async () => {
   const { result } = render();
   await waitFor(() => expect(result.current.status).toBe('ready'));
@@ -51,7 +46,6 @@ test('markDirty then save sends the labelmap and clears dirty', async () => {
   const { result } = render();
   await waitFor(() => expect(result.current.segments).toHaveLength(1));
 
-  await frame();
   act(() => result.current.markDirty());
   expect(result.current.dirty).toBe(true);
 
@@ -60,27 +54,6 @@ test('markDirty then save sends the labelmap and clears dirty', async () => {
   });
   await waitFor(() => expect(result.current.dirty).toBe(false));
   expect(result.current.set?.segSopUid).toBe('1.2.9.4');
-});
-
-test('setting the labelmap up does not count as painting', async () => {
-  // Creating the labelmap, filling it and adding it to a viewport each fire
-  // SEGMENTATION_DATA_MODIFIED, so an ungated markDirty armed Save on every
-  // series before a voxel was painted. Found by opening a real series.
-  //
-  // Holding the frame open is what makes this deterministic: the real window
-  // is one frame wide, which waitFor cannot reliably land inside. The gate
-  // opening again is covered by every other test here, which waits a frame
-  // before marking anything dirty.
-  const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 0);
-  try {
-    const { result } = render();
-    await waitFor(() => expect(result.current.segments).toHaveLength(1));
-
-    act(() => result.current.markDirty());
-    expect(result.current.dirty).toBe(false);
-  } finally {
-    raf.mockRestore();
-  }
 });
 
 test('adding a segment numbers it and marks the set dirty', async () => {
@@ -101,7 +74,6 @@ test('a save conflict surfaces as an error without clearing dirty', async () => 
   );
   const { result } = render();
   await waitFor(() => expect(result.current.segments).toHaveLength(1));
-  await frame();
   act(() => result.current.markDirty());
 
   await act(async () => {

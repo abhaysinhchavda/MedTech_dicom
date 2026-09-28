@@ -22,6 +22,9 @@ export function useMeasurements(seriesUid: string, ready: boolean): Measurements
   // Keyed to the series rather than a bare boolean: switching series without
   // remounting must load the new report, not leave the old set on screen.
   const loadedFor = useRef<string | null>(null);
+  // The geometry as the stored report holds it. `null` means "nothing loaded
+  // yet", which is why the swap below clears it before touching Cornerstone.
+  const saved = useRef<string | null>(null);
 
   const q = useQuery({
     queryKey: ['measurements', seriesUid],
@@ -32,14 +35,38 @@ export function useMeasurements(seriesUid: string, ready: boolean): Measurements
   const forUid = q.data?.frameOfReferenceUid ?? '';
   const data = q.data;
 
+  /**
+   * What the report actually stores, as one comparable string.
+   *
+   * Deliberately geometry and label only. Cornerstone recomputes a restored
+   * measurement's statistics against the loaded volume -- that is what
+   * `invalidated` asks it to do -- so its numbers change without anyone
+   * editing anything. Including them here would make every series that
+   * already had a report look unsaved the moment it opened.
+   */
+  const geometry = useCallback(
+    () =>
+      JSON.stringify(
+        readAnnotations(forUid)
+          .map((m) => [m.id, m.tool, m.points, m.label])
+          .sort(),
+      ),
+    [forUid],
+  );
+
   useEffect(() => {
     if (!ready || !data || loadedFor.current === seriesUid) return;
+    // Cleared first: removing the previous series' annotations is itself a
+    // change Cornerstone reports, and it must not be measured against a
+    // baseline that no longer applies.
+    saved.current = null;
     clearAnnotations();
     loadAnnotations(data.measurements, forUid);
+    saved.current = geometry();
     loadedFor.current = seriesUid;
     setDirty(false);
     setError(null);
-  }, [ready, data, seriesUid, forUid]);
+  }, [ready, data, seriesUid, forUid, geometry]);
 
   useEffect(
     () => () => {
@@ -55,6 +82,10 @@ export function useMeasurements(seriesUid: string, ready: boolean): Measurements
     mutationFn: () => putMeasurements(seriesUid, data?.srSopUid ?? null, readAnnotations(forUid)),
     onSuccess: (next) => {
       qc.setQueryData(['measurements', seriesUid], next);
+      // What is on screen is now what is stored, so it becomes the baseline.
+      // Without this the next recompute would be measured against the report
+      // that was just replaced, and arm Save again.
+      saved.current = geometry();
       setDirty(false);
       setError(null);
     },
@@ -70,7 +101,13 @@ export function useMeasurements(seriesUid: string, ready: boolean): Measurements
     }
   }, [mutateAsync]);
 
-  const markDirty = useCallback(() => setDirty(true), []);
+  const markDirty = useCallback(() => {
+    // Cornerstone fires the same event for "the user moved a handle" and for
+    // "I recalculated this restored annotation's numbers". Only the first is
+    // an edit, and the difference is visible in the geometry, so ask.
+    if (saved.current === null) return;
+    if (geometry() !== saved.current) setDirty(true);
+  }, [geometry]);
 
   return {
     status: q.isPending ? 'loading' : q.isError ? 'error' : 'ready',

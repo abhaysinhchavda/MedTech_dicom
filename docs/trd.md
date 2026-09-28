@@ -79,6 +79,7 @@ anonymised".
 | N12 | A segmentation that cannot be read must never stop the series opening | `GET` returns no segments with `parseError`; `labelmap` answers 404; the viewer shows a non-blocking notice, and painting replaces the unreadable object |
 | N13 | A mask must never be silently misaligned with its images | The wire bytes are a reshape of the volume's own index order, never a transpose; the byte count is checked against the series' dims on both sides; the SEG's frames are mapped back by source SOP Instance UID, and a missing frame must be provably empty |
 | N14 | Clearing every voxel must remove the object, not store an empty one | An all-zero labelmap deletes the stored Segmentation and its series instead of writing a SEG with no segments |
+| N15 | A Save button must mean "this differs from what is stored" | Measurements compare geometry against the loaded report, so Cornerstone recomputing a restored annotation is not an edit; painting is recognised by the modified slices Cornerstone reports, so rendering the labelmap is not an edit either |
 
 ## 5. Interfaces
 
@@ -117,7 +118,7 @@ no segment declares, or a series that is not a volume. Bodies are `{detail}`.
 ## 6. Verification
 
 `scripts/test.ps1` → **151 backend tests** (pytest) + 3 script tests + ruff +
-mypy + **73 frontend tests** (vitest), exit 0, no warnings.
+mypy + **75 frontend tests** (vitest), exit 0, no warnings.
 `cd frontend; npm run e2e` → **3 Playwright tests**: the first seeds a
 synthetic 40-slice series, opens it, and asserts four non-blank canvases,
 scroll, crosshair sync, preset change and reopen; the second paints with the

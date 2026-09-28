@@ -29,6 +29,7 @@ vi.mock('@cornerstonejs/tools', () => ({
 const {
   createLabelmap,
   fillLabelmap,
+  isPaintEvent,
   readLabelmap,
   releaseSegmentation,
   segmentationIdFor,
@@ -79,6 +80,26 @@ describe('the segmentation adapter', () => {
     releaseSegmentation('seg:1');
     expect(segmentation.removeSegmentation).toHaveBeenCalledWith('seg:1');
     expect(cache.removeVolumeLoadObject).toHaveBeenCalledWith('seg:1');
+  });
+
+  test('only an event that names modified slices counts as painting', () => {
+    // Cornerstone fires SEGMENTATION_DATA_MODIFIED for rendering the labelmap
+    // as well as for changing it, and the render path passes nothing but a
+    // segmentationId. Treating those as edits meant drawing a measurement --
+    // which repaints the viewport -- armed the segmentation's Save button.
+    // Found by drawing a length on the real T2-FLAIR series.
+    const fire = (detail: unknown) =>
+      isPaintEvent(new CustomEvent('csTOOLSSEGMENTATIONDATAMODIFIED', { detail }));
+
+    // What the brush sends: the slices it touched, and the segment it used.
+    expect(fire({ segmentationId: 'seg:1', modifiedSlicesToUse: [12, 13], segmentIndex: 1 })).toBe(
+      true,
+    );
+    // What labelmapDisplay and the volume render plans send.
+    expect(fire({ segmentationId: 'seg:1' })).toBe(false);
+    // A stroke that landed outside the volume changed nothing either.
+    expect(fire({ segmentationId: 'seg:1', modifiedSlicesToUse: [] })).toBe(false);
+    expect(fire(null)).toBe(false);
   });
 
   test('releasing something that was never created is a no-op, not a throw', () => {

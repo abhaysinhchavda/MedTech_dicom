@@ -52,6 +52,23 @@ export function showSegmentation(viewportIds: readonly string[], segmentationId:
     segmentation.addLabelmapRepresentationToViewport(viewportId, [{ segmentationId }]);
 }
 
+/**
+ * Whether a SEGMENTATION_DATA_MODIFIED event means voxels actually changed.
+ *
+ * Cornerstone fires that event when it merely *renders* the labelmap:
+ * labelmapDisplay and the volume render plans both call
+ * triggerSegmentationDataModified with nothing but a segmentationId. So
+ * anything that repaints a viewport -- including drawing a measurement, which
+ * has nothing to do with the mask -- arrives looking exactly like an edit.
+ * Only the brush reports which slices it touched, so that payload is the
+ * difference between painting and drawing.
+ */
+export function isPaintEvent(e: Event): boolean {
+  const { detail } = e as CustomEvent<{ modifiedSlicesToUse?: unknown } | null>;
+  const slices = detail?.modifiedSlicesToUse;
+  return Array.isArray(slices) && slices.length > 0;
+}
+
 export function setActiveSegment(segmentationId: string, segmentNumber: number): void {
   // 0 is the eraser: painting with the unlabelled value clears voxels, which
   // is why no separate eraser tool is needed.

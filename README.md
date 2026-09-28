@@ -66,7 +66,7 @@ stated reason rather than failing the upload.
 cd frontend; npm run e2e    # Playwright: loads a synthetic series and drives the viewer
 ```
 
-151 backend tests, 73 frontend tests, 3 end-to-end tests. The e2e tests start their
+151 backend tests, 75 frontend tests, 3 end-to-end tests. The e2e tests start their
 own backend against a synthetic DICOM series, so they need no sample data and no
 network. One paints with the brush, saves, reloads, and checks the mask comes back
 out of the store; another draws a measurement, saves, reloads, and checks the
